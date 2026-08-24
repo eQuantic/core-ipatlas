@@ -3,9 +3,16 @@ using System.Buffers.Binary;
 namespace eQuantic.IpAtlas.Tests;
 
 /// <summary>
-/// Builds .eqatlas files by hand so the reader can be tested against inputs the
-/// compiler would never produce: hostile counts, truncation, flipped bits, old
-/// layouts. A reader is only as trustworthy as the malformed files it survives.
+/// Builds .eqatlas files the compiler would never produce, so the reader can be
+/// tested against them: hostile counts, truncation, flipped bits, old layouts.
+/// A reader is only as trustworthy as the malformed files it survives.
+/// <para>
+/// Valid files go through <see cref="AtlasWriter"/>, the same writer the
+/// compiler and any consumer uses. This helper used to build those by hand too,
+/// which meant the reader was being checked against this file's understanding of
+/// the format rather than against the writer — two things that can drift apart
+/// without a single test noticing.
+/// </para>
 /// </summary>
 internal static class DatasetWriter
 {
@@ -21,47 +28,71 @@ internal static class DatasetWriter
         IReadOnlyList<V4>? v4 = null, IReadOnlyList<V6>? v6 = null, IReadOnlyList<Place>? places = null,
         string source = "test", DateTimeOffset? builtAt = null)
     {
-        v4 ??= [];
-        v6 ??= [];
-        places ??= [];
+        var writer = new AtlasWriter(source, builtAt ?? DateTimeOffset.UnixEpoch);
 
-        var (locationBytes, stringBytes) = Serialize(places);
-        var offset = (long)AtlasFormat.HeaderSize(source, 4);
-        var sections = new List<AtlasSection>();
-
-        long Place(AtlasSectionKind kind, int count, long length)
+        foreach (var record in v4 ?? [])
         {
-            sections.Add(new AtlasSection(kind, count, offset, length));
-            return offset += length;
+            writer.AddV4(record.Start, record.End, Describe(record.Country, record.Asn, record.Traits, record.Source, record.Location, places));
         }
 
-        Place(AtlasSectionKind.V4Ranges, v4.Count, (long)v4.Count * AtlasFormat.V4RecordSize);
-        Place(AtlasSectionKind.V6Ranges, v6.Count, (long)v6.Count * AtlasFormat.V6RecordSize);
-        Place(AtlasSectionKind.Locations, places.Count, locationBytes.Length);
-        Place(AtlasSectionKind.Strings, stringBytes.Length, stringBytes.Length);
+        foreach (var record in v6 ?? [])
+        {
+            writer.AddV6(record.Start, record.End, Describe(record.Country, record.Asn, record.Traits, record.Source, record.Location, places));
+        }
 
         var stream = new MemoryStream();
-        AtlasFormat.WriteHeader(stream, builtAt ?? DateTimeOffset.UnixEpoch, source, sections);
+        writer.WriteTo(stream);
+        return stream.ToArray();
+    }
 
-        var buffer = new byte[AtlasFormat.V6RecordSize];
-        foreach (var record in v4)
+    /// <summary>Resolves the 1-based place id the fixtures use into the record the writer takes.</summary>
+    private static AtlasRecord Describe(
+        string? country, uint asn, NetworkTraits traits, LocationSource source, uint location,
+        IReadOnlyList<Place>? places)
+    {
+        var record = new AtlasRecord(country, asn, traits, source);
+        if (location == 0 || places is null || location > (uint)places.Count)
+        {
+            return record;
+        }
+
+        var place = places[(int)(location - 1)];
+        return record with
+        {
+            Latitude = float.IsNaN(place.Latitude) ? null : place.Latitude,
+            Longitude = float.IsNaN(place.Longitude) ? null : place.Longitude,
+            Region = place.Region,
+            City = place.City,
+        };
+    }
+
+    /// <summary>
+    /// Writes records exactly as given, without sorting them or checking that
+    /// they are disjoint. <see cref="AtlasWriter"/> refuses to do this, which is
+    /// the point of it — but the reader still has to survive a file that got
+    /// this way, so the tests need a way to make one.
+    /// </summary>
+    internal static byte[] BuildUnchecked(IReadOnlyList<V4> v4, string source = "unchecked")
+    {
+        var records = new byte[v4.Count * AtlasFormat.V4RecordSize];
+        for (var i = 0; i < v4.Count; i++)
         {
             AtlasFormat.WriteV4Record(
-                buffer, record.Start, record.End, AtlasFormat.PackCountry(record.Country),
-                record.Asn, AtlasFormat.PackTraits(record.Traits, record.Source), record.Location);
-            stream.Write(buffer, 0, AtlasFormat.V4RecordSize);
+                records.AsSpan(i * AtlasFormat.V4RecordSize), v4[i].Start, v4[i].End,
+                AtlasFormat.PackCountry(v4[i].Country), v4[i].Asn,
+                AtlasFormat.PackTraits(v4[i].Traits, v4[i].Source), 0);
         }
 
-        foreach (var record in v6)
-        {
-            AtlasFormat.WriteV6Record(
-                buffer, record.Start, record.End, AtlasFormat.PackCountry(record.Country),
-                record.Asn, AtlasFormat.PackTraits(record.Traits, record.Source), record.Location);
-            stream.Write(buffer, 0, AtlasFormat.V6RecordSize);
-        }
-
-        stream.Write(locationBytes, 0, locationBytes.Length);
-        stream.Write(stringBytes, 0, stringBytes.Length);
+        var offset = (long)AtlasFormat.HeaderSize(source, 4);
+        var stream = new MemoryStream();
+        AtlasFormat.WriteHeader(stream, DateTimeOffset.UnixEpoch, source,
+        [
+            new AtlasSection(AtlasSectionKind.V4Ranges, v4.Count, offset, records.Length),
+            new AtlasSection(AtlasSectionKind.V6Ranges, 0, offset + records.Length, 0),
+            new AtlasSection(AtlasSectionKind.Locations, 0, offset + records.Length, 0),
+            new AtlasSection(AtlasSectionKind.Strings, 0, offset + records.Length, 0),
+        ]);
+        stream.Write(records);
         return Seal(stream.ToArray());
     }
 
@@ -113,40 +144,4 @@ internal static class DatasetWriter
     }
 
     internal static IpAtlasDatabase Open(byte[] file) => IpAtlasDatabase.Open(new MemoryStream(file));
-
-    private static (byte[] Locations, byte[] Strings) Serialize(IReadOnlyList<Place> places)
-    {
-        var blob = new List<byte>();
-        var offsets = new Dictionary<string, uint>(StringComparer.Ordinal);
-
-        uint Intern(string? value)
-        {
-            if (string.IsNullOrEmpty(value))
-            {
-                return 0;
-            }
-
-            if (offsets.TryGetValue(value, out var existing))
-            {
-                return existing;
-            }
-
-            var bytes = System.Text.Encoding.UTF8.GetBytes(value);
-            var offset = (uint)blob.Count + 1;
-            blob.Add((byte)bytes.Length);
-            blob.AddRange(bytes);
-            offsets[value] = offset;
-            return offset;
-        }
-
-        var locations = new byte[places.Count * AtlasFormat.LocationRecordSize];
-        for (var i = 0; i < places.Count; i++)
-        {
-            AtlasFormat.WriteLocationRecord(
-                locations.AsSpan(i * AtlasFormat.LocationRecordSize),
-                places[i].Latitude, places[i].Longitude, Intern(places[i].Region), Intern(places[i].City));
-        }
-
-        return (locations, blob.ToArray());
-    }
 }

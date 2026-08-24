@@ -1,0 +1,37 @@
+eQuantic.IpAtlas.AtlasRecord
+eQuantic.IpAtlas.AtlasRecord.Asn.get -> uint
+eQuantic.IpAtlas.AtlasRecord.Asn.init -> void
+eQuantic.IpAtlas.AtlasRecord.AtlasRecord() -> void
+eQuantic.IpAtlas.AtlasRecord.AtlasRecord(string? CountryCode = null, uint Asn = 0, eQuantic.IpAtlas.NetworkTraits Traits = eQuantic.IpAtlas.NetworkTraits.None, eQuantic.IpAtlas.LocationSource LocationSource = eQuantic.IpAtlas.LocationSource.None, double? Latitude = null, double? Longitude = null, string? Region = null, string? City = null) -> void
+eQuantic.IpAtlas.AtlasRecord.City.get -> string?
+eQuantic.IpAtlas.AtlasRecord.City.init -> void
+eQuantic.IpAtlas.AtlasRecord.CountryCode.get -> string?
+eQuantic.IpAtlas.AtlasRecord.CountryCode.init -> void
+eQuantic.IpAtlas.AtlasRecord.Deconstruct(out string? CountryCode, out uint Asn, out eQuantic.IpAtlas.NetworkTraits Traits, out eQuantic.IpAtlas.LocationSource LocationSource, out double? Latitude, out double? Longitude, out string? Region, out string? City) -> void
+eQuantic.IpAtlas.AtlasRecord.Equals(eQuantic.IpAtlas.AtlasRecord other) -> bool
+eQuantic.IpAtlas.AtlasRecord.HasPlace.get -> bool
+eQuantic.IpAtlas.AtlasRecord.IsEmpty.get -> bool
+eQuantic.IpAtlas.AtlasRecord.Latitude.get -> double?
+eQuantic.IpAtlas.AtlasRecord.Latitude.init -> void
+eQuantic.IpAtlas.AtlasRecord.LocationSource.get -> eQuantic.IpAtlas.LocationSource
+eQuantic.IpAtlas.AtlasRecord.LocationSource.init -> void
+eQuantic.IpAtlas.AtlasRecord.Longitude.get -> double?
+eQuantic.IpAtlas.AtlasRecord.Longitude.init -> void
+eQuantic.IpAtlas.AtlasRecord.Region.get -> string?
+eQuantic.IpAtlas.AtlasRecord.Region.init -> void
+eQuantic.IpAtlas.AtlasRecord.Traits.get -> eQuantic.IpAtlas.NetworkTraits
+eQuantic.IpAtlas.AtlasRecord.Traits.init -> void
+eQuantic.IpAtlas.AtlasWriter
+eQuantic.IpAtlas.AtlasWriter.Add(System.Net.IPAddress! start, System.Net.IPAddress! end, eQuantic.IpAtlas.AtlasRecord record) -> void
+eQuantic.IpAtlas.AtlasWriter.AddPrefix(string! prefix, eQuantic.IpAtlas.AtlasRecord record) -> bool
+eQuantic.IpAtlas.AtlasWriter.AddV4(uint start, uint end, eQuantic.IpAtlas.AtlasRecord record) -> void
+eQuantic.IpAtlas.AtlasWriter.AddV6(System.UInt128 start, System.UInt128 end, eQuantic.IpAtlas.AtlasRecord record) -> void
+eQuantic.IpAtlas.AtlasWriter.AtlasWriter(string! source, System.DateTimeOffset builtAt) -> void
+eQuantic.IpAtlas.AtlasWriter.V4Count.get -> int
+eQuantic.IpAtlas.AtlasWriter.V6Count.get -> int
+eQuantic.IpAtlas.AtlasWriter.WriteTo(System.IO.Stream! destination) -> void
+override eQuantic.IpAtlas.AtlasRecord.GetHashCode() -> int
+static eQuantic.IpAtlas.AtlasRecord.operator !=(eQuantic.IpAtlas.AtlasRecord left, eQuantic.IpAtlas.AtlasRecord right) -> bool
+static eQuantic.IpAtlas.AtlasRecord.operator ==(eQuantic.IpAtlas.AtlasRecord left, eQuantic.IpAtlas.AtlasRecord right) -> bool
+~override eQuantic.IpAtlas.AtlasRecord.Equals(object obj) -> bool
+~override eQuantic.IpAtlas.AtlasRecord.ToString() -> string

@@ -90,7 +90,7 @@ public class DatabaseIntegrityTests
     public void Rejects_ranges_that_are_not_in_order()
     {
         // Binary search over unsorted records does not fail, it answers wrongly.
-        var file = DatasetWriter.Build(v4:
+        var file = DatasetWriter.BuildUnchecked(
         [
             new(0x0A000000, 0x0AFFFFFF, "FR"),
             new(0x02000000, 0x02FFFFFF, "GB"),
@@ -104,7 +104,7 @@ public class DatabaseIntegrityTests
     [Fact]
     public void Rejects_a_range_that_ends_before_it_starts()
     {
-        var file = DatasetWriter.Build(v4: [new(0x0AFFFFFF, 0x0A000000, "FR")]);
+        var file = DatasetWriter.BuildUnchecked([new(0x0AFFFFFF, 0x0A000000, "FR")]);
 
         Should.Throw<InvalidDataException>(() => DatasetWriter.Open(file));
     }
