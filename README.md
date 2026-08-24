@@ -92,12 +92,8 @@ there are 91,202 such pointers to 5,314 distinct feeds. `eqatlas geofeeds`
 harvests them:
 
 ```bash
-curl -O https://ftp.ripe.net/ripe/dbase/split/ripe.db.inetnum.gz
-curl -O https://ftp.ripe.net/ripe/dbase/split/ripe.db.inet6num.gz
-curl -O https://ftp.apnic.net/apnic/whois/apnic.db.inetnum.gz
-curl -O https://ftp.afrinic.net/dbase/afrinic.db.gz
-
-eqatlas geofeeds --whois *.gz --out geofeeds.csv
+eqatlas fetch --into sources --with-whois     # adds the registry database dumps
+eqatlas geofeeds --whois sources/*.db*.gz --out geofeeds.csv
 ```
 
 It is a real crawl — thousands of small files on thousands of hosts — so it is a

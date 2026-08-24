@@ -259,3 +259,26 @@ public class BuildCommandTests : IDisposable
             .ShouldAllBe(file => file.Optional && file.DiscoverFrom != null);
     }
 }
+
+public class FetchCatalogueTests
+{
+    [Fact]
+    public void The_whois_dumps_are_a_separate_opt_in()
+    {
+        // A few hundred megabytes that a nightly dataset rebuild has no use for.
+        FetchCommand.Catalogue.ShouldNotContain(file => file.Flag == "--whois");
+        FetchCommand.WhoisCatalogue.ShouldAllBe(file => file.Flag == "--whois");
+        FetchCommand.WhoisCatalogue.ShouldAllBe(file =>
+            file.Url.StartsWith("https://", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Every_catalogue_entry_has_a_distinct_local_name()
+    {
+        var names = FetchCommand.Catalogue.Concat(FetchCommand.WhoisCatalogue)
+            .Select(file => file.Name)
+            .ToList();
+
+        names.Distinct(StringComparer.OrdinalIgnoreCase).Count().ShouldBe(names.Count);
+    }
+}

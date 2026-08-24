@@ -202,3 +202,44 @@ public class PrefixListParserTests
         PrefixListParser.Parse(reader, NetworkTraits.Anonymizer).Count().ShouldBe(1);
     }
 }
+
+public class GeofeedAuthorizationSafetyTests
+{
+    [Fact]
+    public void Refuses_to_answer_before_the_ranges_are_compacted()
+    {
+        // Unsorted, overlapping ranges would make the search answer nonsense,
+        // which for a security check means quietly letting things through.
+        var authorization = new GeofeedAuthorization();
+        authorization.Allow(AtlasEntry.FromPrefix("45.10.0.0/24")!.Value);
+
+        Should.Throw<InvalidOperationException>(() =>
+            authorization.Covers(AtlasEntry.FromPrefix("45.10.0.0/25")!.Value));
+    }
+}
+
+public class CidrRoundTripTests
+{
+    [Theory]
+    [InlineData("10.0.0.0/8")]
+    [InlineData("45.10.0.0/24")]
+    [InlineData("1.2.3.4/32")]
+    [InlineData("0.0.0.0/0")]
+    [InlineData("128.0.0.0/1")]
+    [InlineData("2a01:4f8::/32")]
+    [InlineData("2a01:4f8:1:2::/64")]
+    [InlineData("2a01:4f8::1/128")]
+    [InlineData("8000::/1")]
+    [InlineData("::/0")]
+    public void A_prefix_survives_being_written_back_out(string prefix)
+    {
+        // The harvest writes an RFC 8805 file that a build reads back, so this
+        // round trip is the format's own contract with itself.
+        var entry = AtlasEntry.FromPrefix(prefix)!.Value;
+
+        entry.ToCidr().ShouldBe(prefix);
+        var reparsed = AtlasEntry.FromPrefix(entry.ToCidr())!.Value;
+        reparsed.Start.ShouldBe(entry.Start);
+        reparsed.End.ShouldBe(entry.End);
+    }
+}

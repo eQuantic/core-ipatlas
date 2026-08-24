@@ -42,8 +42,18 @@ public sealed class GeofeedAuthorization
     }
 
     /// <summary>Whether the feed may say anything about this range.</summary>
+    /// <exception cref="InvalidOperationException">
+    /// The allowed ranges were never compacted, so they are neither sorted nor
+    /// disjoint and a search over them would answer nonsense. Failing loudly
+    /// beats a check that silently stops checking.
+    /// </exception>
     public bool Covers(AtlasEntry entry)
     {
+        if (!_sealed)
+        {
+            throw new InvalidOperationException("Call Compact() before testing coverage.");
+        }
+
         var ranges = entry.IsV6 ? _v6 : _v4;
         var low = 0;
         var high = ranges.Count - 1;

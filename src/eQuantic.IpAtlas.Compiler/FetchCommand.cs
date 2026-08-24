@@ -59,6 +59,25 @@ public static class FetchCommand
             DiscoverFrom: "https://www.microsoft.com/en-us/download/details.aspx?id=56519"),
     ];
 
+    /// <summary>
+    /// The registry database dumps that <c>eqatlas geofeeds</c> reads.
+    /// <para>
+    /// Kept out of the default fetch because they are a few hundred megabytes and
+    /// most builds do not need them: the geofeed harvest is a periodic job, not
+    /// something a nightly dataset rebuild has to redo. ARIN and LACNIC publish
+    /// no equivalent under terms this can use, so their operators' geofeeds are
+    /// out of reach this way.
+    /// </para>
+    /// </summary>
+    public static IReadOnlyList<SourceFile> WhoisCatalogue { get; } =
+    [
+        new("ripe.db.inetnum.gz", "https://ftp.ripe.net/ripe/dbase/split/ripe.db.inetnum.gz", "--whois"),
+        new("ripe.db.inet6num.gz", "https://ftp.ripe.net/ripe/dbase/split/ripe.db.inet6num.gz", "--whois"),
+        new("apnic.db.inetnum.gz", "https://ftp.apnic.net/apnic/whois/apnic.db.inetnum.gz", "--whois"),
+        new("apnic.db.inet6num.gz", "https://ftp.apnic.net/apnic/whois/apnic.db.inet6num.gz", "--whois"),
+        new("afrinic.db.gz", "https://ftp.afrinic.net/dbase/afrinic.db.gz", "--whois"),
+    ];
+
     private static readonly System.Text.RegularExpressions.Regex AzureLink = new(
         @"https://download\.microsoft\.com/download/[^""]*?ServiceTags_Public_\d+\.json",
         System.Text.RegularExpressions.RegexOptions.IgnoreCase,
@@ -95,7 +114,8 @@ public static class FetchCommand
 
         var failures = 0;
         var optionalSkipped = new List<SourceFile>();
-        foreach (var file in Catalogue)
+        var wanted = args.Has("with-whois") ? Catalogue.Concat(WhoisCatalogue) : Catalogue;
+        foreach (var file in wanted)
         {
             var path = Path.Combine(directory, file.Name);
             try
@@ -144,10 +164,21 @@ public static class FetchCommand
 
         output.WriteLine();
         output.WriteLine("next:");
+        if (args.Has("with-whois"))
+        {
+            output.WriteLine($"  eqatlas geofeeds --whois {directory}/*.db*.gz --out geofeeds.csv");
+            output.WriteLine();
+        }
+
         output.WriteLine($"  eqatlas build --rir {directory}/delegated-* --asn {directory}/ip2asn.tsv \\");
         output.WriteLine($"    --cloud {directory}/*-ranges.json \\");
         output.WriteLine($"    --anycast {directory}/cloudflare-v4.txt {directory}/cloudflare-v6.txt \\");
         output.WriteLine($"    --anonymizer {directory}/tor-exits.txt \\");
+        if (args.Has("with-whois"))
+        {
+            output.WriteLine("    --geofeed geofeeds.csv \\");
+        }
+
         output.WriteLine("    --out world.eqatlas");
         return 0;
     }

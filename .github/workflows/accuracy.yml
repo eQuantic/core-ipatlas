@@ -1,10 +1,10 @@
 name: Accuracy
 
-# The dataset pipeline depends on files five registries and three cloud
-# providers publish, and none of them owe us a stable format. This builds a
-# real world dataset from the live sources every week and measures it, so a
-# source that changes shape shows up here rather than in someone's fraud
-# dashboard. The published numbers in the README come from this job.
+# The dataset pipeline depends on files five registries and several cloud
+# providers publish, and none of them owe us a stable format. This builds a real
+# world dataset from the live sources every week and measures it, so a source
+# that changes shape shows up here rather than in someone's fraud dashboard. The
+# published numbers in the README come from this job.
 on:
   schedule:
     - cron: '17 4 * * 1'
@@ -35,8 +35,8 @@ jobs:
         run: ./artifacts/eqatlas/eQuantic.IpAtlas.Compiler fetch --into sources
 
       # Two datasets from the same inputs: one with only registry delegations,
-      # which is all a registry-derived library can do, and one with every
-      # layer. The gap between them is the number worth reporting.
+      # which is all a registry-derived library can do, and one with every layer.
+      # The gap between them is the number worth reporting.
       - name: Build the registry-only baseline
         run: >
           ./artifacts/eqatlas/eQuantic.IpAtlas.Compiler build
@@ -75,4 +75,42 @@ jobs:
         with:
           name: datasets
           path: '*.eqatlas'
+          retention-days: 7
+
+  geofeeds:
+    name: Geofeed harvest (sampled)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build the compiler
+        run: dotnet publish src/eQuantic.IpAtlas.Compiler -c Release -o artifacts/eqatlas
+
+      - name: Fetch the registry database dumps
+        run: ./artifacts/eqatlas/eQuantic.IpAtlas.Compiler fetch --into sources --with-whois
+
+      # The dumps are a few hundred megabytes and the full crawl reaches thousands
+      # of hosts, so CI samples. The point is not to produce a dataset: it is to
+      # notice when a registry changes the shape of its dump or the geofeed
+      # convention moves, and a sample catches that just as well.
+      - name: Harvest a sample
+        run: |
+          {
+            echo '## Geofeed harvest (sampled)'
+            echo
+            echo '```'
+            ./artifacts/eqatlas/eQuantic.IpAtlas.Compiler geofeeds \
+              --whois sources/*.db*.gz --out geofeeds.csv --limit 200
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: geofeeds
+          path: geofeeds.csv
           retention-days: 7

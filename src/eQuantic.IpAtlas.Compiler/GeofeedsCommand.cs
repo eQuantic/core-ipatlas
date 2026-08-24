@@ -231,10 +231,7 @@ public static class GeofeedsCommand
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException
                 or InvalidOperationException or UriFormatException)
             {
-                // A refusal is an answer; only timeouts and transport faults are
-                // worth asking again about.
-                if (attempt == attempts
-                    || (ex is HttpRequestException { StatusCode: { } status } && (int)status is >= 400 and < 500))
+                if (attempt == attempts || IsFinal(ex))
                 {
                     return null;
                 }
@@ -244,6 +241,33 @@ public static class GeofeedsCommand
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Whether a failure is worth asking about again. A refusal is an answer, and
+    /// a hostname that does not resolve will not resolve on the third try either.
+    /// Across five thousand feeds the dead ones are a large minority, and
+    /// retrying them is most of the wall clock for none of the data.
+    /// </summary>
+    private static bool IsFinal(Exception ex)
+    {
+        if (ex is HttpRequestException { StatusCode: { } status } && (int)status is >= 400 and < 500)
+        {
+            return true;
+        }
+
+        for (var inner = ex; inner is not null; inner = inner.InnerException)
+        {
+            if (inner is System.Net.Sockets.SocketException socket)
+            {
+                return socket.SocketErrorCode is System.Net.Sockets.SocketError.HostNotFound
+                    or System.Net.Sockets.SocketError.NoData
+                    or System.Net.Sockets.SocketError.ConnectionRefused
+                    or System.Net.Sockets.SocketError.NetworkUnreachable;
+            }
+        }
+
+        return false;
     }
 
     private static string Shorten(string url) => url.Length <= 72 ? url : url[..69] + "...";
@@ -259,37 +283,13 @@ public static class GeofeedsCommand
         text.AppendLine("# that pointed at its feed; anything a feed claimed beyond that was dropped.");
         foreach (var entry in entries)
         {
-            text.Append(CultureInfo.InvariantCulture, $"{Cidr(entry)},{entry.CountryCode}");
+            text.Append(CultureInfo.InvariantCulture, $"{entry.ToCidr()},{entry.CountryCode}");
             text.Append(CultureInfo.InvariantCulture, $",{entry.Region},{entry.City}");
             text.AppendLine();
         }
 
         await File.WriteAllTextAsync(temporary, text.ToString(), cancellationToken).ConfigureAwait(false);
         File.Move(temporary, path, overwrite: true);
-    }
-
-    /// <summary>The entry's range as a CIDR, which is what RFC 8805 writes.</summary>
-    private static string Cidr(AtlasEntry entry)
-    {
-        var width = entry.IsV6 ? 128 : 32;
-        var size = entry.End - entry.Start + UInt128.One;
-        var bits = width;
-        while (bits > 0 && (UInt128.One << (width - bits + 1)) <= size)
-        {
-            bits--;
-        }
-
-        var address = entry.IsV6
-            ? new System.Net.IPAddress(ToBytes(entry.Start, 16))
-            : new System.Net.IPAddress(ToBytes(entry.Start, 4));
-        return string.Create(CultureInfo.InvariantCulture, $"{address}/{bits}");
-    }
-
-    private static byte[] ToBytes(UInt128 value, int length)
-    {
-        var bytes = new byte[16];
-        System.Buffers.Binary.BinaryPrimitives.WriteUInt128BigEndian(bytes, value);
-        return length == 16 ? bytes : bytes[12..];
     }
 
     private static int Number(Arguments args, string name, int fallback, int min, int max)

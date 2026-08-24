@@ -8,8 +8,10 @@ CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
 const string Usage = """
 eqatlas — compiles .eqatlas IP geolocation datasets
 
-  fetch   --into <dir> [--attempts <n>]
+  fetch   --into <dir> [--attempts <n>] [--with-whois]
           Downloads every public source a world dataset is built from.
+          --with-whois also pulls the registry database dumps that
+          `eqatlas geofeeds` reads (a few hundred megabytes).
 
   build   --out <dataset.eqatlas>
           [--rir <delegated-extended>...]      registry delegations (base layer)

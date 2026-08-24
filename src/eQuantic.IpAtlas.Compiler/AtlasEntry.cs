@@ -82,6 +82,25 @@ public readonly record struct AtlasEntry(
         return new AtlasEntry(isV6, start, start | size, countryCode, asn, traits, latitude, longitude, region, city);
     }
 
+    /// <summary>
+    /// The range written as a CIDR, which is the notation every source and
+    /// RFC 8805 itself uses. Entries built from a prefix are aligned and their
+    /// size is a power of two, so the prefix length is the address width less
+    /// the size's logarithm. A size of zero is the whole space having wrapped,
+    /// which is a prefix length of nothing.
+    /// </summary>
+    public string ToCidr()
+    {
+        var width = IsV6 ? 128 : 32;
+        var size = End - Start + UInt128.One;
+        var bits = size == UInt128.Zero ? 0 : width - (int)UInt128.Log2(size);
+
+        Span<byte> bytes = stackalloc byte[16];
+        BinaryPrimitives.WriteUInt128BigEndian(bytes, Start);
+        var address = new IPAddress(IsV6 ? bytes : bytes[12..]);
+        return string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{address}/{bits}");
+    }
+
     /// <summary>Whether this entry's range lies wholly inside another's.</summary>
     public bool IsInside(AtlasEntry outer) =>
         IsV6 == outer.IsV6 && Start >= outer.Start && End <= outer.End;
