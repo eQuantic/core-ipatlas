@@ -39,6 +39,14 @@ down before it can compile.
 Add new members to `PublicAPI.Unshipped.txt`. On release, its lines move into
 `PublicAPI.Shipped.txt`.
 
+`PackageValidationBaselineVersion` is pinned to the last released version, so
+`dotnet pack` also compares the compiled assembly against what actually shipped
+to NuGet and fails on a removed or changed member (CP0002). The two checks catch
+different things: the surface file catches it at build time from the source, the
+baseline catches it at pack time from the binary, including changes the source
+file cannot express. A break therefore has to be deliberate twice — recorded in
+the surface file, and the baseline moved forward.
+
 Two things the analyzer will refuse that are worth knowing in advance:
 
 - **Multiple overloads with optional parameters** (RS0026). Write an explicit
