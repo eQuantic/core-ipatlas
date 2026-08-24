@@ -25,7 +25,7 @@ eqatlas — compiles .eqatlas IP geolocation datasets
           [--source <text>] [--built-at <date>]
 
   rdap    --delegated <delegated-extended>... --out <references.csv>
-          [--concurrency <n>] [--timeout <s>] [--attempts <n>] [--limit <n>]
+          [--concurrency <n>] [--per-host <n>] [--timeout <s>] [--attempts <n>] [--limit <n>]
           Asks a registry about every block it delegated, to find the geofeeds
           of operators whose registry publishes no bulk database. Resumable:
           re-running skips what an earlier run already recorded.

@@ -39,10 +39,16 @@ public sealed class PoliteFetcher : IDisposable
     /// <param name="attempts">How many times to ask before giving up.</param>
     /// <param name="perHostLimit">Simultaneous requests allowed to any one host.</param>
     /// <param name="cacheDirectory">Where to remember bodies and validators, or null to not.</param>
-    public PoliteFetcher(TimeSpan timeout, int attempts, int perHostLimit, string? cacheDirectory)
+    /// <param name="accept">A media type to ask for, when the endpoint expects one.</param>
+    public PoliteFetcher(TimeSpan timeout, int attempts, int perHostLimit, string? cacheDirectory, string? accept = null)
     {
         _client = new HttpClient { Timeout = timeout };
         _client.DefaultRequestHeaders.UserAgent.ParseAdd("eQuantic.IpAtlas.Compiler");
+        if (accept is { Length: > 0 })
+        {
+            _client.DefaultRequestHeaders.Accept.ParseAdd(accept);
+        }
+
         _client.MaxResponseContentBufferSize = 8 * 1024 * 1024;
         _attempts = attempts;
         _perHostLimit = perHostLimit;

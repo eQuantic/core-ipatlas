@@ -36,6 +36,30 @@ public static class RdapCommand
         ["afrinic"] = "https://rdap.afrinic.net/rdap/ip/",
     };
 
+    /// <summary>
+    /// National registries that answer better than their regional one for the
+    /// country they serve.
+    /// <para>
+    /// This is not a shortcut, it is the only route to some of the data. Asked
+    /// about a Brazilian block, LACNIC returns a rate-limit page; Registro.br
+    /// returns twelve kilobytes including the operator's geofeed. Brazil is 65%
+    /// of LACNIC's delegations, so sending those queries where they are answered
+    /// also takes two thirds of the load off a registry that plainly cannot
+    /// carry it.
+    /// </para>
+    /// <para>
+    /// Keyed by registry and the country code the delegated file records, which
+    /// is the only routing signal available before a query is made. Other
+    /// national registries advertise RDAP endpoints that did not answer when
+    /// tested, so they are not listed on the strength of existing.
+    /// </para>
+    /// </summary>
+    private static readonly Dictionary<(string Registry, string Country), (string Name, string Endpoint)> National =
+        new()
+        {
+            [("lacnic", "BR")] = ("registro.br", "https://rdap.registro.br/ip/"),
+        };
+
     /// <summary>Asks a registry about each of its delegations and records what it says.</summary>
     public static async Task<int> RunAsync(
         Arguments args, TextWriter output, TextWriter error, CancellationToken cancellationToken)
@@ -55,6 +79,8 @@ public static class RdapCommand
         var timeout = Number(args, "timeout", 20, 1, 120);
         var attempts = Number(args, "attempts", 3, 1, 10);
         var limit = Number(args, "limit", int.MaxValue, 1, int.MaxValue);
+        var perHost = Number(args, "per-host", 4, 1, 16);
+        var cache = args.One("cache");
 
         if (delegated.Count == 0)
         {
@@ -98,9 +124,13 @@ public static class RdapCommand
             return 0;
         }
 
-        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(timeout) };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("eQuantic.IpAtlas.Compiler");
-        client.DefaultRequestHeaders.Accept.ParseAdd("application/rdap+json");
+        // The same fetcher the geofeed harvest uses, for the same reason it was
+        // written: a global concurrency number says nothing about how hard any
+        // one server is being pushed. Every query in this crawl goes to a
+        // handful of hosts, so the limit that matters is per host — and LACNIC
+        // starts answering 429 well before ARIN notices anything.
+        using var fetcher = new PoliteFetcher(
+            TimeSpan.FromSeconds(timeout), attempts, perHost, cache, "application/rdap+json");
 
         // Written as results arrive, not at the end. A crawl of this size takes
         // the better part of an hour, and holding every line in memory until it
@@ -114,7 +144,7 @@ public static class RdapCommand
             new ParallelOptions { MaxDegreeOfParallelism = concurrency, CancellationToken = cancellationToken },
             async (item, token) =>
             {
-                var body = await ReadAsync(client, item.Url, attempts, token).ConfigureAwait(false);
+                var body = await fetcher.GetAsync(item.Url, token).ConfigureAwait(false);
                 if (body is null)
                 {
                     Interlocked.Increment(ref failed);
@@ -194,11 +224,18 @@ public static class RdapCommand
                 continue;
             }
 
-            if (!Endpoints.TryGetValue(fields[0], out var endpoint))
+            var registry = fields[0];
+            if (National.TryGetValue((registry, fields[1]), out var national))
             {
-                unknown.Add(fields[0]);
+                registry = national.Name;
+            }
+            else if (!Endpoints.ContainsKey(registry))
+            {
+                unknown.Add(registry);
                 continue;
             }
+
+            var endpoint = national.Endpoint ?? Endpoints[registry];
 
             if (fields[2] is not ("ipv4" or "ipv6") || !IPAddress.TryParse(fields[3], out var start))
             {
@@ -211,7 +248,7 @@ public static class RdapCommand
                 continue;
             }
 
-            yield return new Delegation(fields[0], $"{fields[0]}/{fields[3]}", endpoint + start, range);
+            yield return new Delegation(registry, $"{registry}/{fields[3]}", endpoint + start, range);
         }
 
         foreach (var registry in unknown)
@@ -307,48 +344,6 @@ public static class RdapCommand
 
             _gate.Dispose();
         }
-    }
-
-    /// <summary>
-    /// One query, retried on the failures that are worth retrying. A registry
-    /// answering "too many requests" is asking for patience, not for the block
-    /// to be given up on.
-    /// </summary>
-    private static async Task<string?> ReadAsync(
-        HttpClient client, string url, int attempts, CancellationToken cancellationToken)
-    {
-        for (var attempt = 1; attempt <= attempts; attempt++)
-        {
-            try
-            {
-                using var response = await client.GetAsync(url, cancellationToken).ConfigureAwait(false);
-                if (response.StatusCode == HttpStatusCode.NotFound)
-                {
-                    return null;
-                }
-
-                if (response.StatusCode == HttpStatusCode.TooManyRequests && attempt < attempts)
-                {
-                    var wait = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds(attempt * 5);
-                    await Task.Delay(wait, cancellationToken).ConfigureAwait(false);
-                    continue;
-                }
-
-                response.EnsureSuccessStatusCode();
-                return await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
-            {
-                if (attempt == attempts)
-                {
-                    return null;
-                }
-
-                await Task.Delay(TimeSpan.FromSeconds(attempt * 2), cancellationToken).ConfigureAwait(false);
-            }
-        }
-
-        return null;
     }
 
     private static int Number(Arguments args, string name, int fallback, int min, int max)
