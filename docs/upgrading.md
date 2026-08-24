@@ -73,6 +73,28 @@ var info = db.Lookup(ip);                                    // or just use the 
 | `IpInfo.Flags` | `IpInfo.Traits` | follows the type |
 | `AtlasFormat.PackFlags` / `UnpackFlags` | `PackTraits` / `UnpackTraits` | follows the type |
 
+## A name you may already be using
+
+2.0 introduces `eQuantic.IpAtlas.IpLocation` (city, region, coordinates). If your
+own code has a type of that name and a `using eQuantic.IpAtlas;` in scope, the
+compiler reports:
+
+```
+error CS0104: 'IpLocation' is an ambiguous reference between
+              'Your.Namespace.IpLocation' and 'eQuantic.IpAtlas.IpLocation'
+```
+
+The message does not say where the new one came from, which makes it more
+puzzling than it is. Alias one of them, or rename yours:
+
+```csharp
+using IpLocation = Your.Namespace.IpLocation;
+```
+
+This came from a consumer hitting it on a real upgrade, where the type in
+conflict held a country and an ASN — a sighting rather than a place. Renaming it
+turned out to be the better description anyway.
+
 ## Behaviour changes worth reading twice
 
 ### `Plausible` answers `null` where 1.x answered

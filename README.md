@@ -70,10 +70,19 @@ about their own networks:
 
 ```bash
 eqatlas fetch --into sources --with-whois
-eqatlas geofeeds --whois sources/*.db*.gz --out geofeeds.csv
+eqatlas geofeeds --whois sources/*.db*.gz --out geofeeds.csv --same-org
 ```
 
-→ [CLI reference](docs/cli.md) · [Build pipeline](docs/pipeline.md) · [Geofeeds](docs/geofeeds.md) · [Data sources](docs/sources.md)
+That one is a real crawl of several thousand hosts. If you would rather not do
+it, a dataset built the same way is published monthly with a checksum and a
+manifest of the run that produced it:
+
+```bash
+curl -fsSLO https://github.com/eQuantic/core-ipatlas/releases/download/dataset/world.eqatlas
+eqatlas verify --dataset world.eqatlas --max-age-days 45
+```
+
+→ [CLI reference](docs/cli.md) · [Prebuilt datasets](docs/prebuilt-datasets.md) · [Build pipeline](docs/pipeline.md) · [Geofeeds](docs/geofeeds.md) · [Data sources](docs/sources.md)
 
 ## Look things up
 

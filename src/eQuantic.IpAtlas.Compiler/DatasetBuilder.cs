@@ -75,54 +75,65 @@ public sealed class DatasetBuilder
         var places = new PlaceTable();
         var v4 = Combine(isV6: false, places);
         var v6 = Combine(isV6: true, places);
-        var (locationBytes, stringBytes) = places.Serialize();
 
-        var sections = LaySections(source, v4.Count, v6.Count, places.Count, locationBytes.Length, stringBytes.Length);
-        var headerStream = new MemoryStream();
-        AtlasFormat.WriteHeader(headerStream, builtAt, source, sections);
-        var header = headerStream.ToArray();
-
-        var state = Crc32.Begin();
-        Emit(output, ref state, header);
-
-        var v4Bytes = new byte[v4.Count * AtlasFormat.V4RecordSize];
-        for (var i = 0; i < v4.Count; i++)
+        // The runtime's writer owns the layout, so there is one implementation of
+        // the format on the write side and it is the one consumers can also use.
+        var writer = new AtlasWriter(source, builtAt);
+        foreach (var segment in v4)
         {
-            var segment = v4[i];
-            AtlasFormat.WriteV4Record(
-                v4Bytes.AsSpan(i * AtlasFormat.V4RecordSize),
-                (uint)segment.Start, (uint)segment.End,
-                segment.Country, segment.Asn, segment.Traits, segment.Location);
+            writer.AddV4((uint)segment.Start, (uint)segment.End, places.Describe(segment));
         }
 
-        Emit(output, ref state, v4Bytes);
-
-        var v6Bytes = new byte[v6.Count * AtlasFormat.V6RecordSize];
-        for (var i = 0; i < v6.Count; i++)
+        foreach (var segment in v6)
         {
-            var segment = v6[i];
-            AtlasFormat.WriteV6Record(
-                v6Bytes.AsSpan(i * AtlasFormat.V6RecordSize),
-                segment.Start, segment.End,
-                segment.Country, segment.Asn, segment.Traits, segment.Location);
+            writer.AddV6(segment.Start, segment.End, places.Describe(segment));
         }
 
-        Emit(output, ref state, v6Bytes);
-        Emit(output, ref state, locationBytes);
-        Emit(output, ref state, stringBytes);
-
-        Span<byte> checksum = stackalloc byte[AtlasFormat.ChecksumSize];
-        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(checksum, Crc32.Finish(state));
-        output.Write(checksum);
-
-        var bytes = (long)header.Length + v4Bytes.Length + v6Bytes.Length
-            + locationBytes.Length + stringBytes.Length + AtlasFormat.ChecksumSize;
+        var counted = new CountingStream(output);
+        writer.WriteTo(counted);
 
         return new BuildReport(
-            v4.Count, v6.Count, places.Count, bytes,
+            v4.Count, v6.Count, places.Count, counted.Written,
             Provenance(v4, v6, LocationSource.RegistryDelegation),
             Provenance(v4, v6, LocationSource.Geofeed),
             Provenance(v4, v6, LocationSource.CloudProvider));
+    }
+
+    /// <summary>Counts what went past, so the report can say how big the file is.</summary>
+    private sealed class CountingStream(Stream inner) : Stream
+    {
+        public long Written { get; private set; }
+
+        public override bool CanRead => false;
+        public override bool CanSeek => false;
+        public override bool CanWrite => true;
+        public override long Length => Written;
+
+        public override long Position
+        {
+            get => Written;
+            set => throw new NotSupportedException();
+        }
+
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            inner.Write(buffer, offset, count);
+            Written += count;
+        }
+
+        public override void Write(ReadOnlySpan<byte> buffer)
+        {
+            inner.Write(buffer);
+            Written += buffer.Length;
+        }
+
+        public override void Flush() => inner.Flush();
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
     }
 
     private static int Provenance(List<Segment> v4, List<Segment> v6, LocationSource source)
@@ -146,31 +157,6 @@ public sealed class DatasetBuilder
         }
 
         return count;
-    }
-
-    private static void Emit(Stream output, ref uint state, byte[] bytes)
-    {
-        state = Crc32.Update(state, bytes);
-        output.Write(bytes, 0, bytes.Length);
-    }
-
-    private static List<AtlasSection> LaySections(
-        string source, int v4Count, int v6Count, int locationCount, int locationBytes, int stringBytes)
-    {
-        var offset = (long)AtlasFormat.HeaderSize(source, 4);
-        var sections = new List<AtlasSection>(4);
-
-        long Place(AtlasSectionKind kind, int count, long length)
-        {
-            sections.Add(new AtlasSection(kind, count, offset, length));
-            return offset += length;
-        }
-
-        Place(AtlasSectionKind.V4Ranges, v4Count, (long)v4Count * AtlasFormat.V4RecordSize);
-        Place(AtlasSectionKind.V6Ranges, v6Count, (long)v6Count * AtlasFormat.V6RecordSize);
-        Place(AtlasSectionKind.Locations, locationCount, locationBytes);
-        Place(AtlasSectionKind.Strings, stringBytes, stringBytes);
-        return sections;
     }
 
     private readonly record struct Segment(UInt128 Start, UInt128 End, ushort Country, uint Asn, ushort Traits, uint Location);
@@ -495,14 +481,16 @@ public sealed class DatasetBuilder
         points.RemoveRange(unique, points.Count - unique);
     }
 
-    /// <summary>Interns distinct places and their names so each is written once.</summary>
+    /// <summary>
+    /// Interns distinct places while the sweep runs, and hands each segment back
+    /// as the record the writer takes. The writer interns again on its own side;
+    /// this table exists so the sweep can compare places cheaply by id and so the
+    /// build report can say how many distinct ones there were.
+    /// </summary>
     private sealed class PlaceTable
     {
         private readonly Dictionary<(float, float, string?, string?), uint> _index = [];
-        private readonly List<(float Latitude, float Longitude, string? Region, string? City)> _places = [];
-        private readonly Dictionary<string, uint> _strings = new(StringComparer.Ordinal);
-        private readonly List<byte[]> _blob = [];
-        private uint _blobLength;
+        private readonly List<(double? Latitude, double? Longitude, string? Region, string? City)> _places = [];
 
         public int Count => _places.Count;
 
@@ -514,61 +502,33 @@ public sealed class DatasetBuilder
                 return existing;
             }
 
-            _places.Add((key.Item1, key.Item2, region, city));
+            _places.Add((latitude, longitude, region, city));
             var id = (uint)_places.Count;
             _index[key] = id;
             return id;
         }
 
-        public (byte[] Locations, byte[] Strings) Serialize()
+        public AtlasRecord Describe(Segment segment)
         {
-            var locations = new byte[_places.Count * AtlasFormat.LocationRecordSize];
-            for (var i = 0; i < _places.Count; i++)
+            var record = new AtlasRecord(
+                AtlasFormat.UnpackCountry(segment.Country),
+                segment.Asn,
+                AtlasFormat.UnpackTraits(segment.Traits),
+                AtlasFormat.UnpackSource(segment.Traits));
+
+            if (segment.Location == 0)
             {
-                var place = _places[i];
-                AtlasFormat.WriteLocationRecord(
-                    locations.AsSpan(i * AtlasFormat.LocationRecordSize),
-                    place.Latitude, place.Longitude, InternString(place.Region), InternString(place.City));
+                return record;
             }
 
-            var strings = new byte[_blobLength];
-            var at = 0;
-            foreach (var chunk in _blob)
+            var place = _places[(int)(segment.Location - 1)];
+            return record with
             {
-                chunk.CopyTo(strings, at);
-                at += chunk.Length;
-            }
-
-            return (locations, strings);
-        }
-
-        private uint InternString(string? value)
-        {
-            if (string.IsNullOrEmpty(value))
-            {
-                return 0;
-            }
-
-            if (_strings.TryGetValue(value, out var existing))
-            {
-                return existing;
-            }
-
-            var bytes = Encoding.UTF8.GetBytes(value);
-            if (bytes.Length > byte.MaxValue)
-            {
-                bytes = bytes[..byte.MaxValue];
-            }
-
-            var chunk = new byte[bytes.Length + 1];
-            chunk[0] = (byte)bytes.Length;
-            bytes.CopyTo(chunk, 1);
-
-            var offset = _blobLength + 1; // one-based, so zero can mean "no string"
-            _blob.Add(chunk);
-            _blobLength += (uint)chunk.Length;
-            _strings[value] = offset;
-            return offset;
+                Latitude = place.Latitude,
+                Longitude = place.Longitude,
+                Region = place.Region,
+                City = place.City,
+            };
         }
     }
 }

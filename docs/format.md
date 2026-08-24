@@ -121,6 +121,15 @@ no traits and no location. They still load, and report `FormatVersion == 1`.
 Datasets written by version 2 need a 2.x reader. The version check says so in
 the exception message rather than failing obscurely.
 
+## Writing one
+
+Do not assemble this by hand. `AtlasWriter` in the runtime package owns the
+layout — section offsets, place interning, checksum placement — and is what both
+the compiler and consumers use. See [the API guide](api.md#writing-a-dataset).
+
+The layout is documented here so the format is auditable, not so that it has to
+be reimplemented.
+
 ## Reproducibility
 
 Two builds from the same inputs produce byte-identical files, provided

@@ -163,6 +163,37 @@ if (db.Age > TimeSpan.FromDays(14))
 
 See [Operations](operations.md) for the rest.
 
+## Writing a dataset
+
+`AtlasWriter` is in the runtime package, so building a small dataset — a test
+fixture, a fallback, a hand-curated overlay — needs no tool and no reimplementing
+of the format:
+
+```csharp
+var writer = new AtlasWriter("test fixture", DateTimeOffset.UnixEpoch);
+
+writer.AddPrefix("45.10.0.0/24", new AtlasRecord("PT", 1930));
+writer.AddPrefix("45.20.0.0/24", new AtlasRecord(
+    "DE", 16509, NetworkTraits.Hosting, LocationSource.CloudProvider,
+    Latitude: 50.11, Longitude: 8.68, Region: "eu-central-1", City: "Frankfurt"));
+
+using var file = File.Create("fixture.eqatlas");
+writer.WriteTo(file);
+```
+
+It sorts ranges for you, interns places so a shared one is written once, and
+**refuses to produce a file the reader would reject** — overlapping or inverted
+ranges throw at `WriteTo` rather than surfacing as a load failure later, far
+from the cause.
+
+This is the same writer the compiler uses, so a fixture is built by the same
+code as a world dataset. That is deliberate: a format whose writer and reader
+are maintained apart is a format that drifts.
+
+`AddPrefix` also accepts a bare address as a single host, and there are
+`AddV4`/`AddV6` overloads taking integers and an `Add` taking two `IPAddress`
+values.
+
 ## Building datasets in-process
 
 The compiler is also a library, if you would rather not shell out:
