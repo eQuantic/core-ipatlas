@@ -24,7 +24,13 @@ eqatlas — compiles .eqatlas IP geolocation datasets
           [--asn-heuristics]                   guess hosting from AS names (off by default)
           [--source <text>] [--built-at <date>]
 
-  geofeeds --whois <registry.db.gz>... --out <geofeeds.csv>
+  rdap    --delegated <delegated-extended>... --out <references.csv>
+          [--concurrency <n>] [--timeout <s>] [--attempts <n>] [--limit <n>]
+          Asks a registry about every block it delegated, to find the geofeeds
+          of operators whose registry publishes no bulk database. Resumable:
+          re-running skips what an earlier run already recorded.
+
+  geofeeds [--whois <registry.db.gz>...] [--references <rdap.csv>...] --out <geofeeds.csv>
           [--concurrency <n>] [--timeout <seconds>] [--attempts <n>] [--limit <n>]
           [--same-org]
           Harvests the geofeeds operators publish about their own networks,
@@ -52,6 +58,9 @@ switch (parsed.Command)
             .ConfigureAwait(false);
     case "build":
         return BuildCommand.Run(parsed, Console.Out, Console.Error);
+    case "rdap":
+        return await RdapCommand.RunAsync(parsed, Console.Out, Console.Error, CancellationToken.None)
+            .ConfigureAwait(false);
     case "geofeeds":
         return await GeofeedsCommand.RunAsync(parsed, Console.Out, Console.Error, CancellationToken.None)
             .ConfigureAwait(false);

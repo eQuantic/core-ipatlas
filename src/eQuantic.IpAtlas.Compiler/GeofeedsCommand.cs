@@ -47,6 +47,7 @@ public static class GeofeedsCommand
         ArgumentNullException.ThrowIfNull(error);
 
         var dumps = args.ExistingFiles("whois");
+        var references = args.ExistingFiles("references");
         var outPath = args.One("out", required: true);
         var concurrency = Number(args, "concurrency", 16, 1, 64);
         var timeout = Number(args, "timeout", 15, 1, 120);
@@ -54,9 +55,9 @@ public static class GeofeedsCommand
         var attempts = Number(args, "attempts", 3, 1, 10);
         var sameOrganisation = args.Has("same-org");
 
-        if (dumps.Count == 0)
+        if (dumps.Count == 0 && references.Count == 0)
         {
-            args.Fail("--whois needs at least one registry database dump");
+            args.Fail("give at least one of --whois (a registry database dump) or --references (an eqatlas rdap file)");
         }
 
         if (args.Errors.Count > 0)
@@ -70,7 +71,7 @@ public static class GeofeedsCommand
         }
 
         var index = new Dictionary<string, GeofeedAuthorization>(StringComparer.Ordinal);
-        var references = 0;
+        var referencesTotal = 0;
         foreach (var dump in dumps)
         {
             var found = 0;
@@ -86,19 +87,43 @@ public static class GeofeedsCommand
                 found++;
             }
 
-            references += found;
+            referencesTotal += found;
             output.WriteLine($"  {Path.GetFileName(dump),-32} {found,8:N0} geofeed references");
+        }
+
+        foreach (var file in references)
+        {
+            var found = 0;
+            foreach (var reference in ReadReferences(file))
+            {
+                if (reference.Url.Length == 0)
+                {
+                    continue; // an audit row: this delegation carried no geofeed
+                }
+
+                if (!index.TryGetValue(reference.Url, out var authorization))
+                {
+                    index[reference.Url] = authorization = new GeofeedAuthorization();
+                }
+
+                authorization.Allow(reference.Range);
+                authorization.AllowOrganisation(reference.Organisation);
+                found++;
+            }
+
+            referencesTotal += found;
+            output.WriteLine($"  {Path.GetFileName(file),-32} {found,8:N0} geofeed references");
         }
 
         if (index.Count == 0)
         {
-            error.WriteLine("eqatlas: no geofeed references in those dumps");
+            error.WriteLine("eqatlas: no geofeed references in those sources");
             return 1;
         }
 
         if (sameOrganisation)
         {
-            WidenToOrganisations(index, dumps, output);
+            WidenToOrganisations(index, dumps, references, output);
         }
 
         foreach (var authorization in index.Values)
@@ -129,7 +154,7 @@ public static class GeofeedsCommand
             concurrency,
             cancellationToken).ConfigureAwait(false);
 
-        report = report with { References = references, Feeds = planned };
+        report = report with { References = referencesTotal, Feeds = planned };
         await WriteFeedAsync(outPath!, accepted, cancellationToken).ConfigureAwait(false);
         Report(output, report, outPath!);
         return accepted.Count > 0 ? 0 : 1;
@@ -146,7 +171,8 @@ public static class GeofeedsCommand
     /// </para>
     /// </summary>
     private static void WidenToOrganisations(
-        Dictionary<string, GeofeedAuthorization> index, IReadOnlyList<string> dumps, TextWriter output)
+        Dictionary<string, GeofeedAuthorization> index, IReadOnlyList<string> dumps,
+        IReadOnlyList<string> references, TextWriter output)
     {
         var byOrganisation = new Dictionary<string, List<GeofeedAuthorization>>(StringComparer.OrdinalIgnoreCase);
         foreach (var authorization in index.Values)
@@ -183,9 +209,55 @@ public static class GeofeedsCommand
             }
         }
 
+        // An RDAP run records the organisation for every delegation it asked
+        // about, geofeed or not, so the same widening works there without a
+        // second pass over anything.
+        foreach (var file in references)
+        {
+            foreach (var reference in ReadReferences(file))
+            {
+                if (reference.Organisation is { Length: > 0 } handle
+                    && byOrganisation.TryGetValue(handle, out var feeds))
+                {
+                    foreach (var authorization in feeds)
+                    {
+                        authorization.AllowSameOrganisation(reference.Range);
+                        added++;
+                    }
+                }
+            }
+        }
+
         output.WriteLine();
         output.WriteLine(
             $"  --same-org: {byOrganisation.Count:N0} publishing organisations, {added:N0} further registry objects");
+    }
+
+    /// <summary>
+    /// Reads what an <c>eqatlas rdap</c> run recorded. Rows with no URL are the
+    /// delegations that carried no geofeed; they are kept in the file as an
+    /// audit of what was checked, and they still carry an organisation, which
+    /// is what <c>--same-org</c> widens from.
+    /// </summary>
+    private static IEnumerable<GeofeedReference> ReadReferences(string path)
+    {
+        foreach (var line in File.ReadLines(path))
+        {
+            if (line.Length == 0 || line[0] == '#')
+            {
+                continue;
+            }
+
+            var fields = line.Split(',');
+            if (fields.Length < 3 || WhoisGeofeedIndex.ParseRange(fields[1]) is not { } range)
+            {
+                continue;
+            }
+
+            var organisation = fields.Length > 3 && fields[3].Length > 0 ? fields[3] : null;
+            yield return new GeofeedReference(range, fields[2], organisation);
+
+        }
     }
 
     /// <summary>
