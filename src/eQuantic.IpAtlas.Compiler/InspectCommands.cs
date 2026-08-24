@@ -99,7 +99,7 @@ public static class InspectCommands
             output.WriteLine($"  scope     {info.Scope}");
             output.WriteLine($"  country   {info.CountryCode ?? "-"}");
             output.WriteLine($"  asn       {info.Asn?.ToString(CultureInfo.InvariantCulture) ?? "-"}");
-            output.WriteLine($"  flags     {(info.Traits == NetworkTraits.None ? "-" : info.Traits.ToString())}");
+            output.WriteLine($"  traits    {(info.Traits == NetworkTraits.None ? "-" : info.Traits.ToString())}");
             if (info.Location is { } place)
             {
                 var coordinates = place.HasCoordinates
