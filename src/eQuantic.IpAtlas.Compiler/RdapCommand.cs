@@ -102,7 +102,11 @@ public static class RdapCommand
         client.DefaultRequestHeaders.UserAgent.ParseAdd("eQuantic.IpAtlas.Compiler");
         client.DefaultRequestHeaders.Accept.ParseAdd("application/rdap+json");
 
-        var found = new System.Collections.Concurrent.ConcurrentBag<string>();
+        // Written as results arrive, not at the end. A crawl of this size takes
+        // the better part of an hour, and holding every line in memory until it
+        // finishes means an interrupted run leaves nothing behind — which is the
+        // exact failure the resume file exists to prevent.
+        await using var sink = new ResultSink(outPath!, already.Count == 0);
         int answered = 0, failed = 0, references = 0;
 
         await Parallel.ForEachAsync(
@@ -139,18 +143,19 @@ public static class RdapCommand
                 {
                     // Recorded anyway: this is what makes a resume possible and
                     // what makes the file an account of everything checked.
-                    found.Add($"{item.Key},{range.ToCidr()},,{organisation}");
+                    await sink.WriteAsync($"{item.Key},{range.ToCidr()},,{organisation}", token).ConfigureAwait(false);
                     return;
                 }
 
                 Interlocked.Add(ref references, answer.Urls.Count);
                 foreach (var url in answer.Urls)
                 {
-                    found.Add($"{item.Key},{range.ToCidr()},{url},{organisation}");
+                    await sink.WriteAsync($"{item.Key},{range.ToCidr()},{url},{organisation}", token)
+                        .ConfigureAwait(false);
                 }
             }).ConfigureAwait(false);
 
-        await AppendAsync(outPath!, found, already.Count == 0, cancellationToken).ConfigureAwait(false);
+        await sink.FlushAsync(cancellationToken).ConfigureAwait(false);
 
         output.WriteLine();
         output.WriteLine($"  {answered,8:N0} answered");
@@ -238,23 +243,66 @@ public static class RdapCommand
         return seen;
     }
 
-    private static async Task AppendAsync(
-        string path, IEnumerable<string> lines, bool fresh, CancellationToken cancellationToken)
+    /// <summary>
+    /// Appends results to the resume file as they arrive, flushing often enough
+    /// that a killed run loses seconds of work rather than an hour of it.
+    /// </summary>
+    private sealed class ResultSink(string path, bool fresh) : IAsyncDisposable
     {
-        var text = new StringBuilder();
-        if (fresh)
+        private const int FlushEvery = 200;
+
+        private readonly SemaphoreSlim _gate = new(1, 1);
+        private StreamWriter? _writer;
+        private int _sinceFlush;
+
+        public async Task WriteAsync(string line, CancellationToken cancellationToken)
         {
-            text.AppendLine("# delegation,range,geofeed url,organisation");
-            text.AppendLine("# Every delegation asked about is recorded, including those with no geofeed,");
-            text.AppendLine("# so this file is both an audit of what was checked and a resume point.");
+            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                if (_writer is null)
+                {
+                    _writer = new StreamWriter(path, append: true);
+                    if (fresh)
+                    {
+                        await _writer.WriteLineAsync("# delegation,range,geofeed url,organisation").ConfigureAwait(false);
+                        await _writer.WriteLineAsync(
+                            "# Every delegation asked about is recorded, including those with no geofeed,").ConfigureAwait(false);
+                        await _writer.WriteLineAsync(
+                            "# so this file is both an audit of what was checked and a resume point.").ConfigureAwait(false);
+                    }
+                }
+
+                await _writer.WriteLineAsync(line).ConfigureAwait(false);
+                if (++_sinceFlush >= FlushEvery)
+                {
+                    await _writer.FlushAsync(cancellationToken).ConfigureAwait(false);
+                    _sinceFlush = 0;
+                }
+            }
+            finally
+            {
+                _gate.Release();
+            }
         }
 
-        foreach (var line in lines.OrderBy(line => line, StringComparer.Ordinal))
+        public async Task FlushAsync(CancellationToken cancellationToken)
         {
-            text.AppendLine(line);
+            if (_writer is not null)
+            {
+                await _writer.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
         }
 
-        await File.AppendAllTextAsync(path, text.ToString(), cancellationToken).ConfigureAwait(false);
+        public async ValueTask DisposeAsync()
+        {
+            if (_writer is not null)
+            {
+                await _writer.DisposeAsync().ConfigureAwait(false);
+            }
+
+            _gate.Dispose();
+        }
     }
 
     /// <summary>

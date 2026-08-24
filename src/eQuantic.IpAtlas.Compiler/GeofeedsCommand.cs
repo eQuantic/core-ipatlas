@@ -54,6 +54,8 @@ public static class GeofeedsCommand
         var limit = Number(args, "limit", int.MaxValue, 1, int.MaxValue);
         var attempts = Number(args, "attempts", 3, 1, 10);
         var sameOrganisation = args.Has("same-org");
+        var perHost = Number(args, "per-host", 2, 1, 16);
+        var cache = args.One("cache");
 
         if (dumps.Count == 0 && references.Count == 0)
         {
@@ -144,17 +146,21 @@ public static class GeofeedsCommand
         output.WriteLine();
         output.WriteLine($"  {planned:N0} distinct feeds to fetch, {concurrency} at a time");
 
-        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(timeout) };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("eQuantic.IpAtlas.Compiler");
-        client.MaxResponseContentBufferSize = 8 * 1024 * 1024;
+        using var fetcher = new PoliteFetcher(TimeSpan.FromSeconds(timeout), attempts, perHost, cache);
 
         var (accepted, report) = await HarvestAsync(
             feeds,
-            (url, token) => ReadAsync(client, url, attempts, token),
+            fetcher.GetAsync,
             concurrency,
             cancellationToken).ConfigureAwait(false);
 
         report = report with { References = referencesTotal, Feeds = planned };
+        if (fetcher.NotModified > 0)
+        {
+            output.WriteLine();
+            output.WriteLine($"  {fetcher.NotModified:N0} feeds answered \"unchanged\" and were served from cache");
+        }
+
         await WriteFeedAsync(outPath!, accepted, cancellationToken).ConfigureAwait(false);
         Report(output, report, outPath!);
         return accepted.Count > 0 ? 0 : 1;
@@ -231,6 +237,37 @@ public static class GeofeedsCommand
         output.WriteLine();
         output.WriteLine(
             $"  --same-org: {byOrganisation.Count:N0} publishing organisations, {added:N0} further registry objects");
+    }
+
+    /// <summary>Orders the harvest deterministically, whatever order it arrived in.</summary>
+    private static int CompareForOutput(AtlasEntry left, AtlasEntry right)
+    {
+        var result = left.IsV6.CompareTo(right.IsV6);
+        if (result != 0)
+        {
+            return result;
+        }
+
+        result = left.Start.CompareTo(right.Start);
+        if (result != 0)
+        {
+            return result;
+        }
+
+        result = left.End.CompareTo(right.End);
+        if (result != 0)
+        {
+            return result;
+        }
+
+        result = string.CompareOrdinal(left.CountryCode, right.CountryCode);
+        if (result != 0)
+        {
+            return result;
+        }
+
+        result = string.CompareOrdinal(left.Region, right.Region);
+        return result != 0 ? result : string.CompareOrdinal(left.City, right.City);
     }
 
     /// <summary>
@@ -350,11 +387,12 @@ public static class GeofeedsCommand
             accepted.AddRange(batch);
         }
 
-        accepted.Sort((left, right) =>
-        {
-            var family = left.IsV6.CompareTo(right.IsV6);
-            return family != 0 ? family : left.Start.CompareTo(right.Start);
-        });
+        // A total order, not just family and start. List.Sort is unstable, so
+        // ties were being broken by whichever parallel fetch happened to finish
+        // first — which made two harvests of the same feeds differ by a few
+        // swapped lines. Reproducibility that only holds when the network
+        // cooperates is not reproducibility.
+        accepted.Sort(CompareForOutput);
 
         return (accepted, new HarvestReport(
             0, feedCount, fetched, unreadable, failed, accepted.Count, widenedTotal, unauthorized,
@@ -386,62 +424,6 @@ public static class GeofeedsCommand
 
         output.WriteLine();
         output.WriteLine($"wrote {outPath}");
-    }
-
-    /// <summary>
-    /// Fetches one feed, retrying with a widening delay. A crawl of thousands of
-    /// small servers has a long tail of transient failures, and treating the
-    /// first timeout as a verdict throws away real data.
-    /// </summary>
-    private static async Task<string?> ReadAsync(
-        HttpClient client, string url, int attempts, CancellationToken cancellationToken)
-    {
-        for (var attempt = 1; attempt <= attempts; attempt++)
-        {
-            try
-            {
-                return await client.GetStringAsync(url, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException
-                or InvalidOperationException or UriFormatException)
-            {
-                if (attempt == attempts || IsFinal(ex))
-                {
-                    return null;
-                }
-
-                await Task.Delay(TimeSpan.FromSeconds(attempt), cancellationToken).ConfigureAwait(false);
-            }
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// Whether a failure is worth asking about again. A refusal is an answer, and
-    /// a hostname that does not resolve will not resolve on the third try either.
-    /// Across five thousand feeds the dead ones are a large minority, and
-    /// retrying them is most of the wall clock for none of the data.
-    /// </summary>
-    private static bool IsFinal(Exception ex)
-    {
-        if (ex is HttpRequestException { StatusCode: { } status } && (int)status is >= 400 and < 500)
-        {
-            return true;
-        }
-
-        for (var inner = ex; inner is not null; inner = inner.InnerException)
-        {
-            if (inner is System.Net.Sockets.SocketException socket)
-            {
-                return socket.SocketErrorCode is System.Net.Sockets.SocketError.HostNotFound
-                    or System.Net.Sockets.SocketError.NoData
-                    or System.Net.Sockets.SocketError.ConnectionRefused
-                    or System.Net.Sockets.SocketError.NetworkUnreachable;
-            }
-        }
-
-        return false;
     }
 
     private static string Shorten(string url) => url.Length <= 72 ? url : url[..69] + "...";

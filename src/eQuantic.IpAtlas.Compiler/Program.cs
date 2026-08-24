@@ -32,7 +32,7 @@ eqatlas — compiles .eqatlas IP geolocation datasets
 
   geofeeds [--whois <registry.db.gz>...] [--references <rdap.csv>...] --out <geofeeds.csv>
           [--concurrency <n>] [--timeout <seconds>] [--attempts <n>] [--limit <n>]
-          [--same-org]
+          [--per-host <n>] [--cache <dir>] [--same-org]
           Harvests the geofeeds operators publish about their own networks,
           keeping only what each one is authorised to claim (RFC 9092).
           --same-org also accepts prefixes the registry records against an
