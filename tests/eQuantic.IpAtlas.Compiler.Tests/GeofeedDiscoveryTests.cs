@@ -363,3 +363,49 @@ public class GeofeedHarvestTests
         accepted.Select(entry => entry.City).ShouldBe(["Lisboa", "Porto", "Berlin"]);
     }
 }
+
+public class HarvestOutputTests
+{
+    [Fact]
+    public async Task What_the_harvest_writes_reads_back_as_a_geofeed()
+    {
+        // The output is fed straight back in through --geofeed, so it has to be
+        // a geofeed: five RFC 8805 fields, empty ones included.
+        var authorization = new GeofeedAuthorization();
+        authorization.Allow(AtlasEntry.FromPrefix("45.10.0.0/16")!.Value);
+        var feeds = new[]
+        {
+            new KeyValuePair<string, GeofeedAuthorization>(
+                "https://a.test/g.csv", authorization.Compact()),
+        };
+
+        var (accepted, _) = await GeofeedsCommand.HarvestAsync(
+            feeds,
+            (_, _) => Task.FromResult<string?>("45.10.0.0/24,PT,PT-11,Lisboa,1000-001\n45.10.1.0/24,PT,,,\n"),
+            concurrency: 1,
+            CancellationToken.None);
+
+        var path = Path.Combine(Path.GetTempPath(), $"harvest-{Guid.NewGuid():N}.csv");
+        try
+        {
+            await GeofeedsCommand.WriteFeedAsync(path, accepted, CancellationToken.None);
+            var lines = (await File.ReadAllLinesAsync(path, TestContext.Current.CancellationToken))
+                .Where(line => line.Length > 0 && line[0] != '#')
+                .ToList();
+
+            lines.ShouldBe(["45.10.0.0/24,PT,PT-11,Lisboa,", "45.10.1.0/24,PT,,,"]);
+
+            using var reader = new StreamReader(path);
+            var reparsed = GeofeedParser.Parse(reader).ToList();
+            reparsed.Count.ShouldBe(2);
+            reparsed[0].City.ShouldBe("Lisboa");
+            reparsed[0].Region.ShouldBe("PT-11");
+            reparsed[1].CountryCode.ShouldBe("PT");
+            reparsed[1].City.ShouldBeNull();
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+}

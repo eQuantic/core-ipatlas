@@ -181,7 +181,7 @@ public static class GeofeedsCommand
             return family != 0 ? family : left.Start.CompareTo(right.Start);
         });
 
-        await WriteAsync(outPath!, accepted, cancellationToken).ConfigureAwait(false);
+        await WriteFeedAsync(outPath!, accepted, cancellationToken).ConfigureAwait(false);
 
         var report = new HarvestReport(
             references, planned, fetched, unreadable, failed, accepted.Count, unauthorized,
@@ -366,7 +366,12 @@ public static class GeofeedsCommand
 
     private static string Shorten(string url) => url.Length <= 72 ? url : url[..69] + "...";
 
-    private static async Task WriteAsync(string path, List<AtlasEntry> entries, CancellationToken cancellationToken)
+    /// <summary>Writes the harvest as an RFC 8805 file, atomically.</summary>
+    /// <param name="path">Where to write it.</param>
+    /// <param name="entries">The accepted prefixes, already sorted.</param>
+    /// <param name="cancellationToken">Cancels the write.</param>
+    public static async Task WriteFeedAsync(
+        string path, List<AtlasEntry> entries, CancellationToken cancellationToken)
     {
         var directory = Path.GetDirectoryName(Path.GetFullPath(path));
         var temporary = Path.Combine(directory ?? ".", $".{Path.GetFileName(path)}.{Environment.ProcessId}.tmp");
@@ -377,8 +382,10 @@ public static class GeofeedsCommand
         text.AppendLine("# that pointed at its feed; anything a feed claimed beyond that was dropped.");
         foreach (var entry in entries)
         {
+            // All five RFC 8805 fields, trailing empty postal code included: the
+            // file this writes is a geofeed like any other and should read as one.
             text.Append(CultureInfo.InvariantCulture, $"{entry.ToCidr()},{entry.CountryCode}");
-            text.Append(CultureInfo.InvariantCulture, $",{entry.Region},{entry.City}");
+            text.Append(CultureInfo.InvariantCulture, $",{entry.Region},{entry.City},");
             text.AppendLine();
         }
 
