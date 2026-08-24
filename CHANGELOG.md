@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.0](https://github.com/eQuantic/core-ipatlas/compare/v2.0.0...v2.1.0) (2026-08-24)
+
+### Features
+
+* a supported way to write a dataset ([6847004](https://github.com/eQuantic/core-ipatlas/commit/684700477ab16c18d938c90e2561996c1c0d2662))
+* publish a built world dataset ([23a70ca](https://github.com/eQuantic/core-ipatlas/commit/23a70caa3208065724b8515a042c845b1bfbaee0))
+
 ## [2.0.0](https://github.com/eQuantic/core-ipatlas/compare/v1.0.0...v2.0.0) (2026-08-24)
 
 ### ⚠ BREAKING CHANGES
