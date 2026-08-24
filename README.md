@@ -195,13 +195,17 @@ Every source is published by the organisation it describes and is free to use.
 
 ## Upgrading from 1.x
 
-Datasets written by 1.x still load. Datasets written by 2.x need 2.x to read.
+Recompile: 2.0 is source compatible for most code but not binary compatible.
+Datasets written by 1.x still load; datasets written by 2.x need 2.x to read.
 
-`IpInfo` gained `Traits`, `Scope` and `Location`; construction by position still
-compiles, deconstruction by position does not. The compiler's parsers now emit a
-single `AtlasEntry` type and `DatasetBuilder` takes ranked layers instead of two
-typed lists. `TravelAssessment` gained `Precision` and `Reason`, and now answers
-`null` in cases 1.x answered `true` or `false` — which is the point of the
-change rather than a side effect of it.
+The change to check for is `TravelAssessment.Plausible`, which now answers
+`null` where 1.x answered `true` or `false` — for out-of-order events, for wide
+countries, and for anycast and anonymizer addresses. That is the point of the
+change rather than a side effect, and `if (verdict.Plausible != true)` will now
+fire on "cannot tell". Check `== false`.
 
-→ [Contributing](docs/contributing.md)
+→ [Full upgrade guide](docs/upgrading.md), with every removed member and why
+
+## Contributing
+
+→ [Building, testing, and the public API surface file](docs/contributing.md)

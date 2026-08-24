@@ -19,6 +19,7 @@ purpose. Start wherever your question is.
 | **[.NET API](api.md)** | `IpAtlasDatabase`, `IpInfo`, scopes and traits, with the shapes a risk check actually needs. |
 | **[CLI reference](cli.md)** | Every `eqatlas` command and flag. |
 | **[Operations](operations.md)** | Running it in production: refreshing datasets without downtime, staleness, memory, thread safety, container sizing. |
+| **[Upgrading from 1.x](upgrading.md)** | Every removed member, the behaviour changes worth reading twice, and what needs no edit at all. |
 
 ## Internals
 
