@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/root/">
+    <File Path=".gitignore" />
     <File Path="global.json" />
     <File Path="LICENSE" />
   </Folder>

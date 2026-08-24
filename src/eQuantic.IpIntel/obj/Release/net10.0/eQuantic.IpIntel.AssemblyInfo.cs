@@ -17,7 +17,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCopyrightAttribute("2026 eQuantic Tech")]
 [assembly: System.Reflection.AssemblyDescriptionAttribute(@"IP intelligence for .NET: a compact binary dataset format compiled from public RIR delegation data, fast in-memory range lookups (country, ASN), and travel-velocity math for impossible-travel risk signals. No external services, no license-encumbered databases.")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("0.1.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("0.1.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("0.1.0+4e6d8e1cb76dd4018c8b4429e407f54624ddc819")]
 [assembly: System.Reflection.AssemblyProductAttribute("eQuantic.IpIntel")]
 [assembly: System.Reflection.AssemblyTitleAttribute("eQuantic.IpIntel")]
 [assembly: System.Reflection.AssemblyVersionAttribute("0.1.0.0")]
