@@ -107,16 +107,37 @@ eqatlas geofeeds --whois sources/*.db*.gz --out geofeeds.csv
 
 It is a real crawl — thousands of small files on thousands of hosts — so it is a
 separate command rather than part of `fetch`, with `--concurrency`, `--timeout`,
-`--attempts` and `--limit` to bound it. Parsing the dumps alone takes about eight
-seconds and 84 MB, streaming.
+`--attempts` and `--limit` to bound it. Parsing the dumps takes about eight
+seconds and 84 MB, streaming; the crawl itself takes tens of minutes.
 
 **Every prefix is checked against the registry objects that pointed at its
 feed.** A geofeed is a CSV on a web server, and the web server does not know
 which addresses its owner holds; without that check, publishing a file would be
-enough to relocate anyone's addresses. In a 200-feed sample, one feed alone
-claimed 86,151 prefixes it had no registry object for. Those were discarded, and
-the command names the feeds that overclaim rather than folding them into a
-total.
+enough to relocate anyone's addresses.
+
+A full run, for scale:
+
+```
+     4,147 feeds read
+       216 answered with something that is not a geofeed
+       951 could not be reached
+
+   534,447 prefixes accepted
+ 3,426,782 prefixes discarded: the feed had no registry object for them
+
+  claimed the most ground they do not hold:
+   169,631 discarded, 13 kept  https://www.hetzner.com/geofeed.csv
+    97,340 discarded, 167 kept  https://geofeed.cogentco.com/geofeed.csv
+    86,151 discarded, 110 kept  https://api.cloudflare.com/warp-egress-ip-ranges.csv
+```
+
+Six prefixes in seven are discarded, and that number says more about the state
+of geofeed publication than about the check. Hetzner's feed lists 169,644
+prefixes and is referenced from five registry objects: one IPv4 /15 and four
+IPv6 /48s. The rest of their estate is almost certainly theirs, but nothing in
+the registry says so, and a tool that assumes it would have to make the same
+assumption for a feed that is lying. The command names the feeds that overclaim
+rather than folding them into a total, so you can see which is which.
 
 ARIN and LACNIC do not publish bulk whois under terms this can use, so their
 geofeeds are not reachable this way. That is a real gap, not an oversight.
@@ -176,21 +197,29 @@ continental.
 
 ## What it costs
 
-Measured on a full world dataset of 496,288 IPv4 and 170,028 IPv6 ranges:
+Two real datasets, both built from live sources. The second adds the harvested
+geofeeds, which is most of the size and all of the city coverage:
 
-| | |
-|---|---|
-| dataset on disk | 17 MB |
-| load, including checksum verification | 30 ms |
-| resident after load | 49 MB |
-| lookup, random addresses | 174 ns |
-| allocation per lookup | 0 bytes |
-| build from source files | 2.3 s |
+| | registries + clouds | + 4,147 geofeeds |
+|---|---:|---:|
+| IPv4 / IPv6 ranges | 496,288 / 170,028 | 763,571 / 407,195 |
+| distinct places | 154 | 27,506 |
+| dataset on disk | 17 MB | 34 MB |
+| load, including checksum | 30 ms | 44 ms |
+| resident after load | 49 MB | 100 MB |
+| lookup, random addresses | 174 ns | 171 ns |
+| allocation per lookup | 0 bytes | 0 bytes |
+| random routable addresses answered with a city | — | 5.9 % |
+| build from source files | 2.3 s | 2.7 s |
 
-`benchmarks/` holds the BenchmarkDotNet project behind these; on a synthetic
-500,000-range dataset a lookup is ~89 ns. Real-world lookups cost more because
-random addresses across a larger dataset miss cache, which is the number worth
-quoting.
+Building peaks at about 1.1 GB resident for the larger one. It is a batch job
+that runs on a schedule, not something a service does, but it is worth knowing
+before you put it in a small container.
+
+`benchmarks/` holds the BenchmarkDotNet project behind the lookup figures; on a
+synthetic 500,000-range dataset a lookup is ~89 ns. Real-world lookups cost more
+because random addresses across a larger dataset miss cache, which is the number
+worth quoting.
 
 ## Honesty notes
 
@@ -212,6 +241,11 @@ quoting.
 - **ASN name heuristics are off by default.** `--asn-heuristics` will guess
   hosting and mobile from AS descriptions. A name match is not evidence, so it
   is opt-in and always outranked by published ranges.
+- **City coverage is where operators bothered.** A geofeed only reaches the
+  address space its publisher annotated in the registry, and most did not
+  annotate much: a full harvest answers about six percent of random routable
+  addresses with a city. That number will rise as operators fill in their
+  objects, and it is a floor you can raise yourself with `--override`.
 - **Anonymizer coverage is Tor and whatever you supply.** The Tor Project's exit
   list is free and authoritative, and `--anonymizer` takes any list of addresses
   in the same shape. Commercial VPN and proxy space is not covered by any free
