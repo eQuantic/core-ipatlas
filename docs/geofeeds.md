@@ -107,11 +107,31 @@ someone else's addresses still fails, because the `org:` handles will not match.
 What changes is that a publisher no longer has to annotate every object to be
 believed about space the registry already attributes to it.
 
+Over the same 5,314 feeds:
+
+| | strict RFC 9092 | `--same-org` |
+|---|---:|---:|
+| prefixes accepted | 534,447 | 3,572,264 |
+| of those, on the registry's word | — | 3,037,449 |
+| discarded | 3,426,782 (86.5 %) | 390,888 (9.9 %) |
+
+The check still bites where it should. Cloudflare's WARP egress feed keeps 220
+prefixes out of 86,261 either way, because that space is not registered to
+Cloudflare under any handle it publishes from.
+
+The widening is concentrated rather than uniform, and it is worth being precise
+about what it buys. It multiplies the prefix count by nearly seven, but random
+routable addresses answered with a city only move from 5.9 % to 6.2 %. What it
+recovers is mostly hosting space — Hetzner, Cogent, GTT — where a lot of prefixes
+cover comparatively few addresses. That happens to be where fraud traffic
+concentrates, so the narrow gain is worth more than the number suggests, but it
+is a narrow gain.
+
 It is off by default, because it is one step past what RFC 9092 says, and
 acceptances are counted by grounds and reported separately rather than merged:
 
 ```
-   prefixes accepted, N of them on the registry's word that the same organisation holds them
+  3,572,264 prefixes accepted, 3,037,449 of them on the registry's word that the same organisation holds them
 ```
 
 Objects with no `org:` attribute contribute nothing to widen from.
@@ -131,6 +151,7 @@ this library has a table for.
 ## How much city coverage this buys
 
 With a full harvest, about **6 % of random routable addresses** answer with a
-city, and a world dataset goes from 154 distinct places to 27,506. That number
-is a floor that rises as operators annotate more of their objects, and you can
-raise it yourself for your own space with `--override`.
+city, and a world dataset goes from 154 distinct places to 27,506 — or 30,152
+with `--same-org`. That number is a floor that rises as operators annotate more
+of their objects, and you can raise it yourself for your own space with
+`--override`.

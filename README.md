@@ -126,21 +126,21 @@ from real coordinates or a country centroid.
 Two real datasets, both built from live sources. The second adds harvested
 geofeeds, which is most of the size and all of the city coverage:
 
-| | registries + clouds | + 4,147 geofeeds |
-|---|---:|---:|
-| IPv4 / IPv6 ranges | 496,288 / 170,028 | 763,571 / 407,195 |
-| distinct places | 154 | 27,506 |
-| dataset on disk | 17 MB | 34 MB |
-| load, including checksum | 30 ms | 44 ms |
-| resident after load | 49 MB | 100 MB |
-| lookup, random addresses | 174 ns | 171 ns |
-| allocation per lookup | 0 bytes | 0 bytes |
-| random routable addresses answered with a city | — | 5.9 % |
-| build from source files | 2.3 s | 2.7 s |
+| | registries + clouds | + geofeeds | + `--same-org` |
+|---|---:|---:|---:|
+| IPv4 / IPv6 ranges | 496,288 / 170,028 | 763,571 / 407,195 | 818,625 / 545,552 |
+| distinct places | 154 | 27,506 | 30,152 |
+| dataset on disk | 17 MB | 34 MB | 41 MB |
+| load, including checksum | 30 ms | 44 ms | 50 ms |
+| resident after load | 49 MB | 100 MB | 107 MB |
+| lookup, random addresses | 174 ns | 171 ns | 170 ns |
+| allocation per lookup | 0 bytes | 0 bytes | 0 bytes |
+| random addresses answered with a city | — | 5.9 % | 6.2 % |
+| build from source files | 2.3 s | 2.7 s | 4.8 s |
 
-Building peaks at about 1.1 GB resident for the larger one — a batch job, not
-something a service does, but worth knowing before you put it in a small
-container.
+Building peaks at 1.1 GB resident for the middle one and 3.3 GB for the last —
+a batch job, not something a service does, but worth knowing before you put it
+on a small build agent.
 
 ## Honesty notes
 

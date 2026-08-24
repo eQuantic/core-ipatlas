@@ -78,20 +78,23 @@ providers reassign regions.
 
 ## Memory and sizing
 
-| | without geofeeds | with geofeeds |
-|---|---:|---:|
-| file on disk | 17 MB | 34 MB |
-| resident after load | 49 MB | 100 MB |
-| load time | 30 ms | 44 ms |
-| transient during load | ~file size | ~file size |
+| | no geofeeds | geofeeds | geofeeds, `--same-org` |
+|---|---:|---:|---:|
+| file on disk | 17 MB | 34 MB | 41 MB |
+| resident after load | 49 MB | 100 MB | 107 MB |
+| load time | 30 ms | 44 ms | 50 ms |
+| lookup | 174 ns | 171 ns | 170 ns |
+| transient during load | ~file size | ~file size | ~file size |
 
 Loading reads the whole file into a pooled buffer, verifies the checksum, then
 parses into arrays; the buffer is returned afterwards. Budget roughly twice the
 file size for the load itself.
 
-**Building is the expensive part** — about 1.1 GB peak for the larger dataset.
-Do it somewhere else and ship the result. A 256 MB service container can serve
-a dataset it could never have built.
+**Building is the expensive part** — about 1.1 GB peak with geofeeds, and 3.3 GB
+with `--same-org`, where the harvest alone contributes three and a half million
+prefixes. Do it somewhere else and ship the result. A 256 MB service container
+can serve a dataset it could never have built, and a build agent needs headroom
+the service does not.
 
 ## Threading
 
