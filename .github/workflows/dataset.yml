@@ -1,0 +1,159 @@
+name: Dataset
+
+# Builds a full world dataset from the live sources and publishes it, so that
+# using this library does not require crawling five thousand geofeeds first.
+#
+# Monthly rather than nightly, and manual whenever you want one sooner. The
+# geofeed harvest reaches thousands of small hosts, and doing that daily to
+# republish a file that barely moves would be rude to people who published a
+# geofeed as a courtesy.
+on:
+  schedule:
+    - cron: '23 3 1 * *'
+  workflow_dispatch:
+    inputs:
+      geofeeds:
+        description: 'Harvest operator geofeeds (adds ~30 minutes)'
+        type: boolean
+        default: true
+      same_org:
+        description: 'Also accept prefixes the registry records against a publishing organisation'
+        type: boolean
+        default: true
+      publish:
+        description: 'Attach the result to the rolling dataset release'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dataset
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build, verify and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      # On a scheduled run the inputs context is empty, and GitHub compares a
+      # missing input to false by casting both to zero — so `inputs.x != false`
+      # is false there, and the monthly build would quietly skip the harvest it
+      # exists to do. Resolve the settings once, explicitly.
+      - name: Decide what to build
+        run: |
+          {
+            echo "GEOFEEDS=${{ github.event_name != 'workflow_dispatch' || inputs.geofeeds }}"
+            echo "SAME_ORG=${{ github.event_name != 'workflow_dispatch' || inputs.same_org }}"
+            echo "PUBLISH=${{ github.event_name != 'workflow_dispatch' || inputs.publish }}"
+          } >> "$GITHUB_ENV"
+
+      - name: Build the compiler
+        run: dotnet publish src/eQuantic.IpAtlas.Compiler -c Release -o eqatlas
+
+      - name: Fetch the public sources
+        run: |
+          if [ "$GEOFEEDS" = "true" ]; then
+            ./eqatlas/eQuantic.IpAtlas.Compiler fetch --into sources --with-whois
+          else
+            ./eqatlas/eQuantic.IpAtlas.Compiler fetch --into sources
+          fi
+
+      - name: Harvest operator geofeeds
+        if: env.GEOFEEDS == 'true'
+        run: |
+          widen=""
+          if [ "$SAME_ORG" = "true" ]; then widen="--same-org"; fi
+          ./eqatlas/eQuantic.IpAtlas.Compiler geofeeds \
+            --whois sources/*.db*.gz --out geofeeds.csv \
+            --concurrency 24 --timeout 12 --attempts 2 $widen \
+            | tee harvest.txt
+
+      - name: Build the dataset
+        run: |
+          geofeed=""
+          if [ -s geofeeds.csv ]; then geofeed="--geofeed geofeeds.csv"; fi
+          ./eqatlas/eQuantic.IpAtlas.Compiler build \
+            --rir sources/delegated-* \
+            --asn sources/ip2asn.tsv \
+            --cloud sources/*-ranges.json \
+            --anycast sources/cloudflare-v4.txt sources/cloudflare-v6.txt \
+            --anonymizer sources/tor-exits.txt \
+            $geofeed \
+            --out world.eqatlas \
+            --source "eQuantic.IpAtlas dataset, built $(date -u +%Y-%m-%d) from RIR, iptoasn, AWS/GCP/Azure/Cloudflare, Tor and operator geofeeds" \
+            | tee build.txt
+
+      # A published dataset that nobody checked is worse than no published
+      # dataset: people would trust it more, not less.
+      - name: Verify it is intact and fresh
+        run: ./eqatlas/eQuantic.IpAtlas.Compiler verify --dataset world.eqatlas --max-age-days 1 | tee verify.txt
+
+      - name: Score it, and refuse to publish a bad one
+        run: |
+          ./eqatlas/eQuantic.IpAtlas.Compiler accuracy \
+            --dataset world.eqatlas --truth sources/*-ranges.json \
+            --min-correct 95 | tee accuracy.txt
+
+      - name: Write the manifest
+        run: |
+          sha256sum world.eqatlas | tee world.eqatlas.sha256
+          {
+            echo "# Dataset manifest"
+            echo
+            echo "Built by [\`dataset.yml\`](../../.github/workflows/dataset.yml),"
+            echo "run [\`${{ github.run_id }}\`](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+            echo "from commit \`${{ github.sha }}\`."
+            echo
+            echo '## Checksum'
+            echo; echo '```'; cat world.eqatlas.sha256; echo '```'
+            echo; echo '## Contents'
+            echo; echo '```'; cat verify.txt; echo '```'
+            echo; echo '## Build'
+            echo; echo '```'; cat build.txt; echo '```'
+            if [ -f harvest.txt ]; then
+              echo; echo '## Geofeed harvest'
+              echo; echo '```'; cat harvest.txt; echo '```'
+            fi
+            echo; echo '## Accuracy'
+            echo; cat accuracy.txt
+            echo; echo '## Sources'
+            echo; echo '```'; ls -la sources/ | tail -n +2; echo '```'
+          } > MANIFEST.md
+          cat MANIFEST.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dataset
+          path: |
+            world.eqatlas
+            world.eqatlas.sha256
+            MANIFEST.md
+          retention-days: 30
+
+      # One rolling release rather than one per month: the point is a stable URL
+      # someone can curl from a Dockerfile. It stays a prerelease so it never
+      # takes "Latest" from the package releases, and the manifest records
+      # exactly which run produced the file that is up there now.
+      - name: Publish to the rolling dataset release
+        if: env.PUBLISH == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! gh release view dataset >/dev/null 2>&1; then
+            gh release create dataset \
+              --prerelease \
+              --title "World dataset (rolling)" \
+              --notes-file MANIFEST.md \
+              world.eqatlas world.eqatlas.sha256 MANIFEST.md
+          else
+            gh release upload dataset world.eqatlas world.eqatlas.sha256 MANIFEST.md --clobber
+            gh release edit dataset --notes-file MANIFEST.md
+          fi
