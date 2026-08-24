@@ -8,3 +8,10 @@ ripencc|XX|ipv4|9.9.9.0|256|20120101|reserved|skip-status
 ripencc|*|ipv4|10.0.0.0|256|20120101|allocated|skip-cc
 ripencc|DE|ipv6|2a01:4f8::|29|20090622|allocated|jkl-012
 ripencc|PT|ipv6|2001:8a0::|32|20030101|assigned|mno-345
+ripencc|PT|ipv4|193.136.0.0|65536|19980101|allocated|pqr-678
+arin|US|ipv4|255.255.255.0|1024|20200101|allocated|overflow-record
+arin|US|ipv4|13.32.0.0|262144|20120101|allocated|stu-901
+arin|US|ipv4|3.4.0.0|262144|20120101|allocated|vwx-234
+arin|US|ipv4|34.76.0.0|65536|20120101|allocated|yza-567
+ripencc|SE|ipv4|13.48.0.0|65536|20180101|allocated|bcd-890
+ripencc|IE|ipv6|2a05:d000::|29|20150101|allocated|efg-123

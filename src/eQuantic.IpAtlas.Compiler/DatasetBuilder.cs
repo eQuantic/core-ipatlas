@@ -1,150 +1,444 @@
+using System.Text;
+
 namespace eQuantic.IpAtlas.Compiler;
 
+/// <summary>What a build produced, so the compiler can report it instead of just claiming success.</summary>
+/// <param name="V4Ranges">IPv4 segments written.</param>
+/// <param name="V6Ranges">IPv6 segments written.</param>
+/// <param name="Locations">Distinct places written.</param>
+/// <param name="Bytes">Size of the finished dataset.</param>
+/// <param name="CountryFromRegistry">Segments whose country came from a registry delegation.</param>
+/// <param name="CountryFromGeofeed">Segments whose country came from an operator's geofeed.</param>
+/// <param name="CountryFromCloud">Segments whose country came from a cloud provider's own ranges.</param>
+public readonly record struct BuildReport(
+    int V4Ranges, int V6Ranges, int Locations, long Bytes,
+    int CountryFromRegistry, int CountryFromGeofeed, int CountryFromCloud);
+
 /// <summary>
-/// Turns parsed country and ASN ranges into one .eqatlas file. The two layers
-/// rarely share boundaries, so a sweep walks every cut point and emits the
-/// segments where either layer knows something, merging neighbours that agree
-/// — the output is sorted, non-overlapping, and as small as the data allows.
+/// Turns parsed ranges from every source into one .eqatlas file.
+/// <para>
+/// Sources are layers with a precedence, not one pile. The layers rarely share
+/// boundaries, so a sweep walks every cut point across all of them and, for
+/// each resulting segment, takes each field from the highest-ranked layer that
+/// has one: a cloud provider's own region beats an operator's geofeed beats a
+/// registry's delegation. Flags accumulate across every layer, because
+/// "datacenter" and "anycast" are true no matter who noticed. Neighbouring
+/// segments that agree are merged, so the output is sorted, non-overlapping,
+/// and as small as the data allows.
+/// </para>
 /// </summary>
 public sealed class DatasetBuilder
 {
-    private readonly List<CountryRange> _countries = [];
-    private readonly List<AsnRange> _asns = [];
+    private const int RegistryPrecedence = 10;
+    private const int AsnPrecedence = 20;
+    private const int GeofeedPrecedence = 30;
+    private const int CloudPrecedence = 40;
+    private const int OverridePrecedence = 50;
 
-    /// <summary>Adds country delegations (RIR data).</summary>
-    public DatasetBuilder AddCountries(IEnumerable<CountryRange> ranges)
+    private sealed record Layer(int Precedence, LocationSource Source, List<AtlasEntry> Entries);
+
+    private readonly List<Layer> _layers = [];
+
+    /// <summary>Adds registry delegations: the base layer every other source may correct.</summary>
+    public DatasetBuilder AddRegistry(IEnumerable<AtlasEntry> entries) =>
+        Add(RegistryPrecedence, LocationSource.RegistryDelegation, entries);
+
+    /// <summary>Adds routed-ASN ranges, which contribute the AS number and any flags.</summary>
+    public DatasetBuilder AddAsns(IEnumerable<AtlasEntry> entries) =>
+        Add(AsnPrecedence, LocationSource.None, entries);
+
+    /// <summary>Adds an operator's self-published geofeed (RFC 8805).</summary>
+    public DatasetBuilder AddGeofeed(IEnumerable<AtlasEntry> entries) =>
+        Add(GeofeedPrecedence, LocationSource.Geofeed, entries);
+
+    /// <summary>Adds a cloud provider's published ranges.</summary>
+    public DatasetBuilder AddCloud(IEnumerable<AtlasEntry> entries) =>
+        Add(CloudPrecedence, LocationSource.CloudProvider, entries);
+
+    /// <summary>Adds local corrections, which outrank every published source.</summary>
+    public DatasetBuilder AddOverrides(IEnumerable<AtlasEntry> entries) =>
+        Add(OverridePrecedence, LocationSource.Override, entries);
+
+    private DatasetBuilder Add(int precedence, LocationSource source, IEnumerable<AtlasEntry> entries)
     {
-        _countries.AddRange(ranges);
+        ArgumentNullException.ThrowIfNull(entries);
+        _layers.Add(new Layer(precedence, source, entries.ToList()));
         return this;
     }
 
-    /// <summary>Adds routed-ASN ranges (optional enrichment).</summary>
-    public DatasetBuilder AddAsns(IEnumerable<AsnRange> ranges)
+    /// <summary>Combines every layer and writes the .eqatlas file.</summary>
+    public BuildReport Write(Stream output, string source, DateTimeOffset builtAt)
     {
-        _asns.AddRange(ranges);
-        return this;
+        ArgumentNullException.ThrowIfNull(output);
+        ArgumentNullException.ThrowIfNull(source);
+
+        var places = new PlaceTable();
+        var v4 = Combine(isV6: false, places);
+        var v6 = Combine(isV6: true, places);
+        var (locationBytes, stringBytes) = places.Serialize();
+
+        var sections = LaySections(source, v4.Count, v6.Count, places.Count, locationBytes.Length, stringBytes.Length);
+        var headerStream = new MemoryStream();
+        AtlasFormat.WriteHeader(headerStream, builtAt, source, sections);
+        var header = headerStream.ToArray();
+
+        var state = Crc32.Begin();
+        Emit(output, ref state, header);
+
+        var v4Bytes = new byte[v4.Count * AtlasFormat.V4RecordSize];
+        for (var i = 0; i < v4.Count; i++)
+        {
+            var segment = v4[i];
+            AtlasFormat.WriteV4Record(
+                v4Bytes.AsSpan(i * AtlasFormat.V4RecordSize),
+                (uint)segment.Start, (uint)segment.End,
+                segment.Country, segment.Asn, segment.Flags, segment.Location);
+        }
+
+        Emit(output, ref state, v4Bytes);
+
+        var v6Bytes = new byte[v6.Count * AtlasFormat.V6RecordSize];
+        for (var i = 0; i < v6.Count; i++)
+        {
+            var segment = v6[i];
+            AtlasFormat.WriteV6Record(
+                v6Bytes.AsSpan(i * AtlasFormat.V6RecordSize),
+                segment.Start, segment.End,
+                segment.Country, segment.Asn, segment.Flags, segment.Location);
+        }
+
+        Emit(output, ref state, v6Bytes);
+        Emit(output, ref state, locationBytes);
+        Emit(output, ref state, stringBytes);
+
+        Span<byte> checksum = stackalloc byte[AtlasFormat.ChecksumSize];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(checksum, Crc32.Finish(state));
+        output.Write(checksum);
+
+        var bytes = (long)header.Length + v4Bytes.Length + v6Bytes.Length
+            + locationBytes.Length + stringBytes.Length + AtlasFormat.ChecksumSize;
+
+        return new BuildReport(
+            v4.Count, v6.Count, places.Count, bytes,
+            Provenance(v4, v6, LocationSource.RegistryDelegation),
+            Provenance(v4, v6, LocationSource.Geofeed),
+            Provenance(v4, v6, LocationSource.CloudProvider));
     }
 
-    /// <summary>Combines both layers and writes the .eqatlas file.</summary>
-    public void Write(Stream output, string source, DateTimeOffset builtAt)
+    private static int Provenance(List<Segment> v4, List<Segment> v6, LocationSource source)
     {
-        var v4 = Combine(
-            _countries.Where(c => !c.IsV6).Select(c => (c.Start, c.End, Payload: (AtlasFormat.PackCountry(c.CountryCode), 0u))),
-            _asns.Where(a => !a.IsV6).Select(a => (a.Start, a.End, a.Asn)));
-        var v6 = Combine(
-            _countries.Where(c => c.IsV6).Select(c => (c.Start, c.End, Payload: (AtlasFormat.PackCountry(c.CountryCode), 0u))),
-            _asns.Where(a => a.IsV6).Select(a => (a.Start, a.End, a.Asn)));
-
-        AtlasFormat.WriteHeader(output, builtAt, source, v4.Count, v6.Count);
+        var wanted = (ushort)((byte)source << 8);
+        var count = 0;
         foreach (var segment in v4)
         {
-            AtlasFormat.WriteV4Record(output, (uint)segment.Start, (uint)segment.End, segment.Country, segment.Asn);
+            if ((segment.Flags & 0xFF00) == wanted && segment.Country != 0)
+            {
+                count++;
+            }
         }
 
         foreach (var segment in v6)
         {
-            AtlasFormat.WriteV6Record(output, segment.Start, segment.End, segment.Country, segment.Asn);
+            if ((segment.Flags & 0xFF00) == wanted && segment.Country != 0)
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    private static void Emit(Stream output, ref uint state, byte[] bytes)
+    {
+        state = Crc32.Update(state, bytes);
+        output.Write(bytes, 0, bytes.Length);
+    }
+
+    private static List<AtlasSection> LaySections(
+        string source, int v4Count, int v6Count, int locationCount, int locationBytes, int stringBytes)
+    {
+        var offset = (long)AtlasFormat.HeaderSize(source, 4);
+        var sections = new List<AtlasSection>(4);
+
+        long Place(AtlasSectionKind kind, int count, long length)
+        {
+            sections.Add(new AtlasSection(kind, count, offset, length));
+            return offset += length;
+        }
+
+        Place(AtlasSectionKind.V4Ranges, v4Count, (long)v4Count * AtlasFormat.V4RecordSize);
+        Place(AtlasSectionKind.V6Ranges, v6Count, (long)v6Count * AtlasFormat.V6RecordSize);
+        Place(AtlasSectionKind.Locations, locationCount, locationBytes);
+        Place(AtlasSectionKind.Strings, stringBytes, stringBytes);
+        return sections;
+    }
+
+    private readonly record struct Segment(UInt128 Start, UInt128 End, ushort Country, uint Asn, ushort Flags, uint Location);
+
+    private sealed record Normalized(int Precedence, LocationSource Source, List<AtlasEntry> Entries)
+    {
+        public int Cursor { get; set; }
+
+        public AtlasEntry? At(UInt128 point)
+        {
+            while (Cursor < Entries.Count && Entries[Cursor].End < point)
+            {
+                Cursor++;
+            }
+
+            return Cursor < Entries.Count && Entries[Cursor].Start <= point ? Entries[Cursor] : null;
         }
     }
 
-    private readonly record struct Segment(UInt128 Start, UInt128 End, ushort Country, uint Asn);
-
-    private static List<Segment> Combine(
-        IEnumerable<(UInt128 Start, UInt128 End, (ushort Country, uint) Payload)> countryRanges,
-        IEnumerable<(UInt128 Start, UInt128 End, uint Asn)> asnRanges)
+    private List<Segment> Combine(bool isV6, PlaceTable places)
     {
-        var countries = Normalize(countryRanges.Select(r => (r.Start, r.End, Value: (uint)r.Payload.Item1)));
-        var asns = Normalize(asnRanges.Select(r => (r.Start, r.End, Value: r.Asn)));
+        var layers = _layers
+            .Select(layer => new Normalized(
+                layer.Precedence,
+                layer.Source,
+                Normalize(layer.Entries.Where(entry => entry.IsV6 == isV6))))
+            .Where(layer => layer.Entries.Count > 0)
+            .OrderByDescending(layer => layer.Precedence)
+            .ToList();
 
-        // Sweep over every boundary of both layers.
-        var cuts = new SortedSet<UInt128>();
-        foreach (var (start, end, _) in countries)
+        if (layers.Count == 0)
         {
-            cuts.Add(start);
-            if (end != UInt128.MaxValue)
-            {
-                cuts.Add(end + 1);
-            }
+            return [];
         }
 
-        foreach (var (start, end, _) in asns)
-        {
-            cuts.Add(start);
-            if (end != UInt128.MaxValue)
-            {
-                cuts.Add(end + 1);
-            }
-        }
-
-        var points = cuts.ToArray();
+        var points = CutPoints(layers);
         var result = new List<Segment>();
-        int countryIndex = 0, asnIndex = 0;
 
-        for (var i = 0; i < points.Length; i++)
+        for (var i = 0; i < points.Count; i++)
         {
             var start = points[i];
-            var end = i + 1 < points.Length ? points[i + 1] - 1 : UInt128.MaxValue;
-
-            var country = ValueAt(countries, ref countryIndex, start);
-            var asn = ValueAt(asns, ref asnIndex, start);
-            if (country == 0 && asn == 0)
+            var end = i + 1 < points.Count ? points[i + 1] - UInt128.One : Ceiling(isV6);
+            if (end < start)
             {
                 continue;
             }
 
-            // Merge with the previous segment when contiguous and identical.
+            var segment = Merge(layers, places, start, end);
+            if (segment is not { } value)
+            {
+                continue;
+            }
+
             if (result.Count > 0
                 && result[^1] is { } last
-                && last.End + 1 == start
-                && last.Country == country
-                && last.Asn == asn)
+                && last.End + UInt128.One == start
+                && last.Country == value.Country
+                && last.Asn == value.Asn
+                && last.Flags == value.Flags
+                && last.Location == value.Location)
             {
                 result[^1] = last with { End = end };
             }
             else
             {
-                result.Add(new Segment(start, end, (ushort)country, asn));
+                result.Add(value);
             }
         }
 
         return result;
     }
 
-    /// <summary>Sorted, overlap-resolved (first wins) copy of one layer.</summary>
-    private static List<(UInt128 Start, UInt128 End, uint Value)> Normalize(
-        IEnumerable<(UInt128 Start, UInt128 End, uint Value)> ranges)
+    private static UInt128 Ceiling(bool isV6) => isV6 ? UInt128.MaxValue : uint.MaxValue;
+
+    private static Segment? Merge(List<Normalized> layers, PlaceTable places, UInt128 start, UInt128 end)
     {
-        var sorted = ranges.Where(r => r.Start <= r.End).OrderBy(r => r.Start).ThenBy(r => r.End).ToList();
-        var result = new List<(UInt128 Start, UInt128 End, uint Value)>(sorted.Count);
-        foreach (var range in sorted)
+        string? country = null;
+        uint asn = 0;
+        var flags = IpFlags.None;
+        double? latitude = null;
+        double? longitude = null;
+        string? region = null;
+        string? city = null;
+        var locationSource = LocationSource.None;
+
+        foreach (var layer in layers)
         {
-            if (result.Count > 0 && range.Start <= result[^1].End)
+            if (layer.At(start) is not { } entry)
             {
-                // Overlap: honor the earlier delegation, keep any tail.
-                if (range.End <= result[^1].End)
+                continue;
+            }
+
+            flags |= entry.Flags;
+
+            if (asn == 0)
+            {
+                asn = entry.Asn;
+            }
+
+            var contributes = entry.CountryCode is not null || entry.HasPlace;
+            if (contributes && locationSource == LocationSource.None && layer.Source != LocationSource.None)
+            {
+                locationSource = layer.Source;
+            }
+
+            country ??= entry.CountryCode;
+            region ??= entry.Region;
+            city ??= entry.City;
+            if (latitude is null && entry.Latitude is not null)
+            {
+                latitude = entry.Latitude;
+                longitude = entry.Longitude;
+            }
+        }
+
+        var packedCountry = AtlasFormat.PackCountry(country);
+        var location = latitude is not null || region is not null || city is not null
+            ? places.Intern(latitude, longitude, region, city)
+            : 0u;
+
+        if (packedCountry == 0 && asn == 0 && flags == IpFlags.None && location == 0)
+        {
+            return null;
+        }
+
+        return new Segment(start, end, packedCountry, asn, AtlasFormat.PackFlags(flags, locationSource), location);
+    }
+
+    private static List<UInt128> CutPoints(List<Normalized> layers)
+    {
+        var capacity = 0;
+        foreach (var layer in layers)
+        {
+            capacity += layer.Entries.Count * 2;
+        }
+
+        var points = new List<UInt128>(capacity);
+        foreach (var layer in layers)
+        {
+            foreach (var entry in layer.Entries)
+            {
+                points.Add(entry.Start);
+                if (entry.End != UInt128.MaxValue)
+                {
+                    points.Add(entry.End + UInt128.One);
+                }
+            }
+        }
+
+        points.Sort();
+        var unique = 0;
+        for (var i = 0; i < points.Count; i++)
+        {
+            if (i == 0 || points[i] != points[unique - 1])
+            {
+                points[unique++] = points[i];
+            }
+        }
+
+        points.RemoveRange(unique, points.Count - unique);
+        return points;
+    }
+
+    /// <summary>Sorted, overlap-resolved (first wins) copy of one layer.</summary>
+    private static List<AtlasEntry> Normalize(IEnumerable<AtlasEntry> entries)
+    {
+        var sorted = entries
+            .Where(entry => entry.Start <= entry.End && !entry.IsEmpty)
+            .OrderBy(entry => entry.Start)
+            .ThenBy(entry => entry.End)
+            .ToList();
+
+        var result = new List<AtlasEntry>(sorted.Count);
+        foreach (var entry in sorted)
+        {
+            if (result.Count > 0 && entry.Start <= result[^1].End)
+            {
+                // Overlap inside one source: honour the earlier record, keep any tail.
+                if (entry.End <= result[^1].End || result[^1].End == UInt128.MaxValue)
                 {
                     continue;
                 }
 
-                result.Add((result[^1].End + 1, range.End, range.Value));
+                result.Add(entry with { Start = result[^1].End + UInt128.One });
             }
             else
             {
-                result.Add(range);
+                result.Add(entry);
             }
         }
 
         return result;
     }
 
-    /// <summary>The layer's value covering a point, advancing the cursor monotonically.</summary>
-    private static uint ValueAt(List<(UInt128 Start, UInt128 End, uint Value)> layer, ref int index, UInt128 point)
+    /// <summary>Interns distinct places and their names so each is written once.</summary>
+    private sealed class PlaceTable
     {
-        while (index < layer.Count && layer[index].End < point)
+        private readonly Dictionary<(float, float, string?, string?), uint> _index = [];
+        private readonly List<(float Latitude, float Longitude, string? Region, string? City)> _places = [];
+        private readonly Dictionary<string, uint> _strings = new(StringComparer.Ordinal);
+        private readonly List<byte[]> _blob = [];
+        private uint _blobLength;
+
+        public int Count => _places.Count;
+
+        public uint Intern(double? latitude, double? longitude, string? region, string? city)
         {
-            index++;
+            var key = ((float)(latitude ?? double.NaN), (float)(longitude ?? double.NaN), region, city);
+            if (_index.TryGetValue(key, out var existing))
+            {
+                return existing;
+            }
+
+            _places.Add((key.Item1, key.Item2, region, city));
+            var id = (uint)_places.Count;
+            _index[key] = id;
+            return id;
         }
 
-        return index < layer.Count && layer[index].Start <= point ? layer[index].Value : 0;
+        public (byte[] Locations, byte[] Strings) Serialize()
+        {
+            var locations = new byte[_places.Count * AtlasFormat.LocationRecordSize];
+            for (var i = 0; i < _places.Count; i++)
+            {
+                var place = _places[i];
+                AtlasFormat.WriteLocationRecord(
+                    locations.AsSpan(i * AtlasFormat.LocationRecordSize),
+                    place.Latitude, place.Longitude, InternString(place.Region), InternString(place.City));
+            }
+
+            var strings = new byte[_blobLength];
+            var at = 0;
+            foreach (var chunk in _blob)
+            {
+                chunk.CopyTo(strings, at);
+                at += chunk.Length;
+            }
+
+            return (locations, strings);
+        }
+
+        private uint InternString(string? value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return 0;
+            }
+
+            if (_strings.TryGetValue(value, out var existing))
+            {
+                return existing;
+            }
+
+            var bytes = Encoding.UTF8.GetBytes(value);
+            if (bytes.Length > byte.MaxValue)
+            {
+                bytes = bytes[..byte.MaxValue];
+            }
+
+            var chunk = new byte[bytes.Length + 1];
+            chunk[0] = (byte)bytes.Length;
+            bytes.CopyTo(chunk, 1);
+
+            var offset = _blobLength + 1; // one-based, so zero can mean "no string"
+            _blob.Add(chunk);
+            _blobLength += (uint)chunk.Length;
+            _strings[value] = offset;
+            return offset;
+        }
     }
 }

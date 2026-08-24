@@ -1,72 +1,51 @@
+using System.Globalization;
 using eQuantic.IpAtlas.Compiler;
 
-// eqatlas build --rir <file>... [--asn <tsv>...] --out <path> [--source <text>]
-if (args.Length == 0 || args[0] != "build")
+// A tool's output gets read by scripts and pasted into tickets. Coordinates and
+// counts must not change shape with the machine's locale.
+CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
+
+const string Usage = """
+eqatlas — compiles .eqatlas IP geolocation datasets
+
+  fetch   --into <dir> [--attempts <n>]
+          Downloads every public source a world dataset is built from.
+
+  build   --out <dataset.eqatlas>
+          [--rir <delegated-extended>...]      registry delegations (base layer)
+          [--asn <ip2asn.tsv>...]              autonomous system numbers
+          [--geofeed <feed.csv>...]            RFC 8805 feeds, outrank delegations
+          [--cloud <ranges.json>...]           AWS / Google / Azure published ranges
+          [--anycast <cidrs.txt>...]           plain CIDR lists, flagged anycast
+          [--override <feed.csv>...]           local corrections, outrank everything
+          [--asn-heuristics]                   guess hosting from AS names (off by default)
+          [--source <text>] [--built-at <date>]
+
+  verify  --dataset <dataset.eqatlas> [--max-age-days <n>]
+          Checks a dataset is intact and says how old it is.
+
+  lookup  --dataset <dataset.eqatlas> --ip <address>...
+          Answers for one or more addresses.
+""";
+
+var parsed = Arguments.Parse(args);
+switch (parsed.Command)
 {
-    Console.Error.WriteLine("usage: eqatlas build --rir <delegated-extended-file>... [--asn <ip2asn-tsv>...] --out <dataset.eqatlas> [--source <text>]");
-    return 1;
+    case "fetch":
+        return await FetchCommand.RunAsync(parsed, Console.Out, Console.Error, CancellationToken.None)
+            .ConfigureAwait(false);
+    case "build":
+        return BuildCommand.Run(parsed, Console.Out, Console.Error);
+    case "verify":
+        return InspectCommands.Verify(parsed, Console.Out, Console.Error);
+    case "lookup":
+        return InspectCommands.Lookup(parsed, Console.Out, Console.Error);
+    case null:
+        Console.Error.WriteLine(Usage);
+        return 2;
+    default:
+        Console.Error.WriteLine($"eqatlas: unknown command '{parsed.Command}'");
+        Console.Error.WriteLine();
+        Console.Error.WriteLine(Usage);
+        return 2;
 }
-
-var rirFiles = new List<string>();
-var asnFiles = new List<string>();
-string? outPath = null;
-string? source = null;
-
-for (var i = 1; i < args.Length; i++)
-{
-    switch (args[i])
-    {
-        case "--rir":
-            while (i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal))
-            {
-                rirFiles.Add(args[++i]);
-            }
-
-            break;
-        case "--asn":
-            while (i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal))
-            {
-                asnFiles.Add(args[++i]);
-            }
-
-            break;
-        case "--out":
-            outPath = args[++i];
-            break;
-        case "--source":
-            source = args[++i];
-            break;
-        default:
-            Console.Error.WriteLine($"unknown argument: {args[i]}");
-            return 1;
-    }
-}
-
-if (rirFiles.Count == 0 || outPath is null)
-{
-    Console.Error.WriteLine("at least one --rir file and --out are required");
-    return 1;
-}
-
-var builder = new DatasetBuilder();
-foreach (var file in rirFiles)
-{
-    using var reader = new StreamReader(file);
-    builder.AddCountries(RirDelegatedParser.Parse(reader));
-    Console.WriteLine($"rir: {Path.GetFileName(file)}");
-}
-
-foreach (var file in asnFiles)
-{
-    using var reader = new StreamReader(file);
-    builder.AddAsns(AsnTsvParser.Parse(reader));
-    Console.WriteLine($"asn: {Path.GetFileName(file)}");
-}
-
-using var output = File.Create(outPath);
-builder.Write(
-    output,
-    source ?? $"rir:{rirFiles.Count} asn:{asnFiles.Count}",
-    DateTimeOffset.UtcNow);
-Console.WriteLine($"wrote {outPath} ({output.Length:N0} bytes)");
-return 0;

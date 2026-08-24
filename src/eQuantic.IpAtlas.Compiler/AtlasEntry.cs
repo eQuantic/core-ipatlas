@@ -1,0 +1,77 @@
+using System.Buffers.Binary;
+using System.Net;
+using System.Net.Sockets;
+
+namespace eQuantic.IpAtlas.Compiler;
+
+/// <summary>
+/// One range and everything a single source claimed about it. Every parser
+/// produces these, so the builder merges registry delegations, geofeeds, cloud
+/// ranges and ASN data through one code path instead of one path per source.
+/// </summary>
+/// <param name="IsV6">Whether the range is IPv6.</param>
+/// <param name="Start">First address, inclusive.</param>
+/// <param name="End">Last address, inclusive.</param>
+/// <param name="CountryCode">ISO 3166-1 alpha-2, when the source carried one.</param>
+/// <param name="Asn">Autonomous system number, or zero for none.</param>
+/// <param name="Flags">What kind of network the source says this is.</param>
+/// <param name="Latitude">Degrees north, when the source carried coordinates.</param>
+/// <param name="Longitude">Degrees east, when the source carried coordinates.</param>
+/// <param name="Region">Subdivision name or code, when the source carried one.</param>
+/// <param name="City">City name, when the source carried one.</param>
+public readonly record struct AtlasEntry(
+    bool IsV6,
+    UInt128 Start,
+    UInt128 End,
+    string? CountryCode = null,
+    uint Asn = 0,
+    IpFlags Flags = IpFlags.None,
+    double? Latitude = null,
+    double? Longitude = null,
+    string? Region = null,
+    string? City = null)
+{
+    /// <summary>Whether the entry carries anything worth recording.</summary>
+    public bool IsEmpty =>
+        CountryCode is null && Asn == 0 && Flags == IpFlags.None
+        && Latitude is null && Region is null && City is null;
+
+    /// <summary>Whether the entry names a place, beyond just a country.</summary>
+    public bool HasPlace => Latitude is not null || Region is not null || City is not null;
+
+    /// <summary>Builds an entry from a CIDR prefix, or null when the prefix does not parse.</summary>
+    public static AtlasEntry? FromPrefix(
+        string prefix, string? countryCode = null, uint asn = 0, IpFlags flags = IpFlags.None,
+        double? latitude = null, double? longitude = null, string? region = null, string? city = null)
+    {
+        var slash = prefix.AsSpan().IndexOf('/');
+        if (slash < 0
+            || !IPAddress.TryParse(prefix.AsSpan(0, slash), out var address)
+            || !int.TryParse(prefix.AsSpan(slash + 1), out var bits))
+        {
+            return null;
+        }
+
+        var isV6 = address.AddressFamily == AddressFamily.InterNetworkV6;
+        var width = isV6 ? 128 : 32;
+        if (bits < 0 || bits > width)
+        {
+            return null;
+        }
+
+        var hostBits = width - bits;
+        var size = hostBits >= 128 ? UInt128.MaxValue : (UInt128.One << hostBits) - UInt128.One;
+        var start = ToNumber(address, isV6) & ~size;
+        return new AtlasEntry(isV6, start, start | size, countryCode, asn, flags, latitude, longitude, region, city);
+    }
+
+    /// <summary>An address as the big-endian integer the dataset sorts on.</summary>
+    public static UInt128 ToNumber(IPAddress address, bool isV6)
+    {
+        Span<byte> bytes = stackalloc byte[16];
+        address.TryWriteBytes(bytes, out var written);
+        return isV6
+            ? BinaryPrimitives.ReadUInt128BigEndian(bytes)
+            : BinaryPrimitives.ReadUInt32BigEndian(bytes[..written]);
+    }
+}

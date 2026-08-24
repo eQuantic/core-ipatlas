@@ -9,6 +9,7 @@
     <Project Path="src/eQuantic.IpAtlas/eQuantic.IpAtlas.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/eQuantic.IpAtlas.Compiler.Tests/eQuantic.IpAtlas.Compiler.Tests.csproj" />
     <Project Path="tests/eQuantic.IpAtlas.Tests/eQuantic.IpAtlas.Tests.csproj" />
   </Folder>
 </Solution>

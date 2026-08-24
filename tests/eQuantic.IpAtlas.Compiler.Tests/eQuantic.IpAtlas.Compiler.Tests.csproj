@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <TargetFramework>net10.0</TargetFramework>
     <IsPackable>false</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
@@ -14,8 +14,9 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\eQuantic.IpAtlas\eQuantic.IpAtlas.csproj" />
+    <ProjectReference Include="..\..\src\eQuantic.IpAtlas.Compiler\eQuantic.IpAtlas.Compiler.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="Fixtures/**" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\eQuantic.IpAtlas.Tests\Fixtures\**" Link="Fixtures\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

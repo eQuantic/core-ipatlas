@@ -1,0 +1,6 @@
+# RFC 8805 geofeed
+203.0.113.0/24,PT,PT-11,Lisboa,1000-001
+2.16.0.0/20,GB,GB-ENG,London,
+5.10.0.0/18,NL,NL-NH,Amsterdam,
+2.0.0.0/16,,,,
+2001:8a0::/32,PT,PT-13,Porto,
