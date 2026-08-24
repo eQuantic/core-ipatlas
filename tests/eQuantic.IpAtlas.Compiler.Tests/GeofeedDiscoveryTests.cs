@@ -243,3 +243,123 @@ public class CidrRoundTripTests
         reparsed.End.ShouldBe(entry.End);
     }
 }
+
+/// <summary>
+/// The harvest end to end, against feeds that behave badly on purpose. This is
+/// the path that decides whose claims about the internet get believed.
+/// </summary>
+public class GeofeedHarvestTests
+{
+    private static KeyValuePair<string, GeofeedAuthorization> Feed(string url, params string[] allowed)
+    {
+        var authorization = new GeofeedAuthorization();
+        foreach (var prefix in allowed)
+        {
+            authorization.Allow(AtlasEntry.FromPrefix(prefix)!.Value);
+        }
+
+        return new KeyValuePair<string, GeofeedAuthorization>(url, authorization.Compact());
+    }
+
+    private static Task<(List<AtlasEntry> Accepted, HarvestReport Report)> Harvest(
+        Dictionary<string, string?> bodies,
+        params KeyValuePair<string, GeofeedAuthorization>[] feeds) =>
+        GeofeedsCommand.HarvestAsync(
+            feeds,
+            (url, _) => Task.FromResult(bodies.TryGetValue(url, out var body) ? body : null),
+            concurrency: 4,
+            CancellationToken.None);
+
+    [Fact]
+    public async Task Keeps_what_a_feed_is_entitled_to_say()
+    {
+        var (accepted, report) = await Harvest(
+            new() { ["https://a.test/g.csv"] = "45.10.0.0/24,PT,PT-11,Lisboa\n" },
+            Feed("https://a.test/g.csv", "45.10.0.0/16"));
+
+        accepted.Count.ShouldBe(1);
+        accepted[0].City.ShouldBe("Lisboa");
+        report.Accepted.ShouldBe(1);
+        report.Unauthorized.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task Discards_a_feed_claiming_space_it_does_not_hold()
+    {
+        // A file at any URL saying Google's resolver is in Antarctica.
+        var (accepted, report) = await Harvest(
+            new() { ["https://evil.test/g.csv"] = "45.10.0.0/24,PT,,Lisboa\n8.8.8.0/24,AQ,,Nowhere\n" },
+            Feed("https://evil.test/g.csv", "45.10.0.0/16"));
+
+        accepted.Count.ShouldBe(1);
+        accepted.ShouldNotContain(entry => entry.CountryCode == "AQ");
+        report.Unauthorized.ShouldBe(1);
+        report.WorstOffenders.ShouldContain(offender => offender.Url == "https://evil.test/g.csv");
+    }
+
+    [Fact]
+    public async Task Names_the_feeds_that_overclaim_instead_of_only_totalling_them()
+    {
+        var greedy = string.Concat(Enumerable.Range(0, 50).Select(i => $"8.{i}.0.0/16,AQ,,Nowhere\n"));
+        var (_, report) = await Harvest(
+            new()
+            {
+                ["https://greedy.test/g.csv"] = greedy,
+                ["https://polite.test/g.csv"] = "45.20.0.0/24,ES,,Madrid\n",
+            },
+            Feed("https://greedy.test/g.csv", "45.10.0.0/24"),
+            Feed("https://polite.test/g.csv", "45.20.0.0/24"));
+
+        report.Unauthorized.ShouldBe(50);
+        report.WorstOffenders[0].Url.ShouldBe("https://greedy.test/g.csv");
+        report.WorstOffenders[0].Rejected.ShouldBe(50);
+        report.WorstOffenders.ShouldNotContain(offender => offender.Url == "https://polite.test/g.csv");
+    }
+
+    [Fact]
+    public async Task Counts_a_page_that_is_not_a_geofeed_as_unreadable()
+    {
+        // Plenty of these URLs now serve a parked page or a redirect to one.
+        var (accepted, report) = await Harvest(
+            new() { ["https://gone.test/g.csv"] = "<!DOCTYPE html><html><body>Not found</body></html>" },
+            Feed("https://gone.test/g.csv", "45.10.0.0/16"));
+
+        accepted.ShouldBeEmpty();
+        report.Unreadable.ShouldBe(1);
+        report.Fetched.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task Counts_a_feed_that_could_not_be_read()
+    {
+        var (accepted, report) = await Harvest(new(), Feed("https://dead.test/g.csv", "45.10.0.0/16"));
+
+        accepted.ShouldBeEmpty();
+        report.Failed.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Takes_the_union_when_many_registry_objects_point_at_one_feed()
+    {
+        // One operator, many allocations, one file: the common case.
+        var (accepted, _) = await Harvest(
+            new() { ["https://big.test/g.csv"] = "45.10.0.0/24,PT,,Lisboa\n45.20.0.0/24,PT,,Porto\n9.9.9.0/24,PT,,Nope\n" },
+            Feed("https://big.test/g.csv", "45.10.0.0/24", "45.20.0.0/24"));
+
+        accepted.Count.ShouldBe(2);
+        accepted.ShouldNotContain(entry => entry.City == "Nope");
+    }
+
+    [Fact]
+    public async Task Sorts_the_output_so_a_harvest_is_reproducible()
+    {
+        var (accepted, _) = await Harvest(
+            new()
+            {
+                ["https://a.test/g.csv"] = "45.20.0.0/24,PT,,Porto\n2a01:4f8::/32,DE,,Berlin\n45.10.0.0/24,PT,,Lisboa\n",
+            },
+            Feed("https://a.test/g.csv", "45.0.0.0/8", "2a01:4f8::/32"));
+
+        accepted.Select(entry => entry.City).ShouldBe(["Lisboa", "Porto", "Berlin"]);
+    }
+}

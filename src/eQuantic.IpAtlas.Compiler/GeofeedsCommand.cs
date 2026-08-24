@@ -190,6 +190,100 @@ public static class GeofeedsCommand
         return accepted.Count > 0 ? 0 : 1;
     }
 
+    /// <summary>
+    /// Fetches every feed and keeps only what each is authorised to claim.
+    /// <para>
+    /// Separate from the command, and taking the fetch as a delegate, so the
+    /// check that decides whose claims are believed can be tested against
+    /// hostile inputs rather than only against whatever the internet happened
+    /// to serve that day.
+    /// </para>
+    /// </summary>
+    /// <param name="feeds">Each URL with the ranges whose registry objects referenced it.</param>
+    /// <param name="fetch">How to read one feed, answering null when it cannot be read.</param>
+    /// <param name="concurrency">How many feeds to read at once.</param>
+    /// <param name="cancellationToken">Cancels the harvest.</param>
+    public static async Task<(List<AtlasEntry> Accepted, HarvestReport Report)> HarvestAsync(
+        IEnumerable<KeyValuePair<string, GeofeedAuthorization>> feeds,
+        Func<string, CancellationToken, Task<string?>> fetch,
+        int concurrency,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(feeds);
+        ArgumentNullException.ThrowIfNull(fetch);
+
+        var results = new System.Collections.Concurrent.ConcurrentBag<List<AtlasEntry>>();
+        var offenders = new System.Collections.Concurrent.ConcurrentBag<(string Url, int Rejected, int Kept)>();
+        int fetched = 0, unreadable = 0, failed = 0, unauthorized = 0, feedCount = 0;
+
+        await Parallel.ForEachAsync(
+            feeds,
+            new ParallelOptions { MaxDegreeOfParallelism = concurrency, CancellationToken = cancellationToken },
+            async (feed, token) =>
+            {
+                Interlocked.Increment(ref feedCount);
+                var body = await fetch(feed.Key, token).ConfigureAwait(false);
+                if (body is null)
+                {
+                    Interlocked.Increment(ref failed);
+                    return;
+                }
+
+                var kept = new List<AtlasEntry>();
+                var rejected = 0;
+                var parsed = 0;
+                using (var reader = new StringReader(body))
+                {
+                    foreach (var entry in GeofeedParser.Parse(reader))
+                    {
+                        parsed++;
+                        if (feed.Value.Covers(entry))
+                        {
+                            kept.Add(entry);
+                        }
+                        else
+                        {
+                            rejected++;
+                        }
+                    }
+                }
+
+                if (parsed == 0)
+                {
+                    Interlocked.Increment(ref unreadable);
+                    return;
+                }
+
+                Interlocked.Increment(ref fetched);
+                Interlocked.Add(ref unauthorized, rejected);
+                if (rejected > 0)
+                {
+                    offenders.Add((feed.Key, rejected, kept.Count));
+                }
+
+                if (kept.Count > 0)
+                {
+                    results.Add(kept);
+                }
+            }).ConfigureAwait(false);
+
+        var accepted = new List<AtlasEntry>();
+        foreach (var batch in results)
+        {
+            accepted.AddRange(batch);
+        }
+
+        accepted.Sort((left, right) =>
+        {
+            var family = left.IsV6.CompareTo(right.IsV6);
+            return family != 0 ? family : left.Start.CompareTo(right.Start);
+        });
+
+        return (accepted, new HarvestReport(
+            0, feedCount, fetched, unreadable, failed, accepted.Count, unauthorized,
+            offenders.OrderByDescending(entry => entry.Rejected).Take(5).ToList()));
+    }
+
     private static void Report(TextWriter output, HarvestReport report, string outPath)
     {
         output.WriteLine();
