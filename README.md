@@ -84,6 +84,15 @@ eqatlas build \
   --out world.eqatlas
 ```
 
+A full world dataset is about 17 MB and takes a couple of seconds to build. The
+build writes to a temporary file and renames it into place, so rebuilding over
+the dataset a running service is serving cannot leave it truncated.
+
+```bash
+eqatlas verify --dataset world.eqatlas --max-age-days 14
+eqatlas lookup --dataset world.eqatlas --ip 18.184.0.1
+```
+
 ### Geofeeds: city-level data outside the clouds
 
 Operators publish where their own addresses are, as an RFC 8805 file pointed at
@@ -111,15 +120,6 @@ total.
 
 ARIN and LACNIC do not publish bulk whois under terms this can use, so their
 geofeeds are not reachable this way. That is a real gap, not an oversight.
-
-A full world dataset is about 17 MB and takes a couple of seconds to build. The
-build writes to a temporary file and renames it into place, so rebuilding over
-the dataset a running service is serving cannot leave it truncated.
-
-```bash
-eqatlas verify --dataset world.eqatlas --max-age-days 14
-eqatlas lookup --dataset world.eqatlas --ip 18.184.0.1
-```
 
 ## Look things up
 
