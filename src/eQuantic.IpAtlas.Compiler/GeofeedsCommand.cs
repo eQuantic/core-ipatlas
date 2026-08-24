@@ -11,6 +11,7 @@ namespace eQuantic.IpAtlas.Compiler;
 /// <param name="Unreadable">Feeds that answered with something that is not a geofeed.</param>
 /// <param name="Failed">Feeds that could not be reached.</param>
 /// <param name="Accepted">Prefixes kept.</param>
+/// <param name="Widened">Prefixes accepted because the registry records them against the same organisation.</param>
 /// <param name="Unauthorized">Prefixes a feed had no standing to describe.</param>
 /// <param name="WorstOffenders">
 /// The feeds that claimed the most ground they had no registry object for,
@@ -19,7 +20,7 @@ namespace eQuantic.IpAtlas.Compiler;
 /// hides which one you have.
 /// </param>
 public readonly record struct HarvestReport(
-    int References, int Feeds, int Fetched, int Unreadable, int Failed, int Accepted, int Unauthorized,
+    int References, int Feeds, int Fetched, int Unreadable, int Failed, int Accepted, int Widened, int Unauthorized,
     IReadOnlyList<(string Url, int Rejected, int Kept)> WorstOffenders);
 
 /// <summary>
@@ -51,6 +52,7 @@ public static class GeofeedsCommand
         var timeout = Number(args, "timeout", 15, 1, 120);
         var limit = Number(args, "limit", int.MaxValue, 1, int.MaxValue);
         var attempts = Number(args, "attempts", 3, 1, 10);
+        var sameOrganisation = args.Has("same-org");
 
         if (dumps.Count == 0)
         {
@@ -80,6 +82,7 @@ public static class GeofeedsCommand
                 }
 
                 authorization.Allow(reference.Range);
+                authorization.AllowOrganisation(reference.Organisation);
                 found++;
             }
 
@@ -91,6 +94,11 @@ public static class GeofeedsCommand
         {
             error.WriteLine("eqatlas: no geofeed references in those dumps");
             return 1;
+        }
+
+        if (sameOrganisation)
+        {
+            WidenToOrganisations(index, dumps, output);
         }
 
         foreach (var authorization in index.Values)
@@ -115,79 +123,69 @@ public static class GeofeedsCommand
         client.DefaultRequestHeaders.UserAgent.ParseAdd("eQuantic.IpAtlas.Compiler");
         client.MaxResponseContentBufferSize = 8 * 1024 * 1024;
 
-        var results = new System.Collections.Concurrent.ConcurrentBag<List<AtlasEntry>>();
-        var offenders = new System.Collections.Concurrent.ConcurrentBag<(string Url, int Rejected, int Kept)>();
-        int fetched = 0, unreadable = 0, failed = 0, unauthorized = 0;
-
-        await Parallel.ForEachAsync(
+        var (accepted, report) = await HarvestAsync(
             feeds,
-            new ParallelOptions { MaxDegreeOfParallelism = concurrency, CancellationToken = cancellationToken },
-            async (feed, token) =>
-            {
-                var body = await ReadAsync(client, feed.Key, attempts, token).ConfigureAwait(false);
-                if (body is null)
-                {
-                    Interlocked.Increment(ref failed);
-                    return;
-                }
+            (url, token) => ReadAsync(client, url, attempts, token),
+            concurrency,
+            cancellationToken).ConfigureAwait(false);
 
-                var kept = new List<AtlasEntry>();
-                var rejected = 0;
-                var parsed = 0;
-                using (var reader = new StringReader(body))
-                {
-                    foreach (var entry in GeofeedParser.Parse(reader))
-                    {
-                        parsed++;
-                        if (feed.Value.Covers(entry))
-                        {
-                            kept.Add(entry);
-                        }
-                        else
-                        {
-                            rejected++;
-                        }
-                    }
-                }
-
-                if (parsed == 0)
-                {
-                    Interlocked.Increment(ref unreadable);
-                    return;
-                }
-
-                Interlocked.Increment(ref fetched);
-                Interlocked.Add(ref unauthorized, rejected);
-                if (rejected > 0)
-                {
-                    offenders.Add((feed.Key, rejected, kept.Count));
-                }
-
-                if (kept.Count > 0)
-                {
-                    results.Add(kept);
-                }
-            }).ConfigureAwait(false);
-
-        var accepted = new List<AtlasEntry>();
-        foreach (var batch in results)
-        {
-            accepted.AddRange(batch);
-        }
-
-        accepted.Sort((left, right) =>
-        {
-            var family = left.IsV6.CompareTo(right.IsV6);
-            return family != 0 ? family : left.Start.CompareTo(right.Start);
-        });
-
+        report = report with { References = references, Feeds = planned };
         await WriteFeedAsync(outPath!, accepted, cancellationToken).ConfigureAwait(false);
-
-        var report = new HarvestReport(
-            references, planned, fetched, unreadable, failed, accepted.Count, unauthorized,
-            offenders.OrderByDescending(entry => entry.Rejected).Take(5).ToList());
         Report(output, report, outPath!);
         return accepted.Count > 0 ? 0 : 1;
+    }
+
+    /// <summary>
+    /// Adds, to each feed's authorisation, every range the registry records
+    /// against an organisation that published it.
+    /// <para>
+    /// A second pass over the dumps rather than one: the organisations worth
+    /// looking for are only known once the first pass has read every geofeed
+    /// reference, and holding every inetnum in a registry to avoid re-reading
+    /// would cost far more memory than re-reading costs seconds.
+    /// </para>
+    /// </summary>
+    private static void WidenToOrganisations(
+        Dictionary<string, GeofeedAuthorization> index, IReadOnlyList<string> dumps, TextWriter output)
+    {
+        var byOrganisation = new Dictionary<string, List<GeofeedAuthorization>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var authorization in index.Values)
+        {
+            foreach (var organisation in authorization.Organisations)
+            {
+                if (!byOrganisation.TryGetValue(organisation, out var feeds))
+                {
+                    byOrganisation[organisation] = feeds = [];
+                }
+
+                feeds.Add(authorization);
+            }
+        }
+
+        if (byOrganisation.Count == 0)
+        {
+            output.WriteLine();
+            output.WriteLine("  --same-org: no referencing object carried an org: handle, nothing to widen");
+            return;
+        }
+
+        var wanted = new HashSet<string>(byOrganisation.Keys, StringComparer.OrdinalIgnoreCase);
+        var added = 0;
+        foreach (var dump in dumps)
+        {
+            foreach (var (range, organisation) in WhoisGeofeedIndex.ParseOrganisationRanges(dump, wanted))
+            {
+                foreach (var authorization in byOrganisation[organisation])
+                {
+                    authorization.AllowSameOrganisation(range);
+                    added++;
+                }
+            }
+        }
+
+        output.WriteLine();
+        output.WriteLine(
+            $"  --same-org: {byOrganisation.Count:N0} publishing organisations, {added:N0} further registry objects");
     }
 
     /// <summary>
@@ -214,7 +212,7 @@ public static class GeofeedsCommand
 
         var results = new System.Collections.Concurrent.ConcurrentBag<List<AtlasEntry>>();
         var offenders = new System.Collections.Concurrent.ConcurrentBag<(string Url, int Rejected, int Kept)>();
-        int fetched = 0, unreadable = 0, failed = 0, unauthorized = 0, feedCount = 0;
+        int fetched = 0, unreadable = 0, failed = 0, unauthorized = 0, widenedTotal = 0, feedCount = 0;
 
         await Parallel.ForEachAsync(
             feeds,
@@ -232,18 +230,24 @@ public static class GeofeedsCommand
                 var kept = new List<AtlasEntry>();
                 var rejected = 0;
                 var parsed = 0;
+                var widened = 0;
                 using (var reader = new StringReader(body))
                 {
                     foreach (var entry in GeofeedParser.Parse(reader))
                     {
                         parsed++;
-                        if (feed.Value.Covers(entry))
+                        switch (feed.Value.Covers(entry))
                         {
-                            kept.Add(entry);
-                        }
-                        else
-                        {
-                            rejected++;
+                            case Coverage.Referenced:
+                                kept.Add(entry);
+                                break;
+                            case Coverage.SameOrganisation:
+                                kept.Add(entry);
+                                widened++;
+                                break;
+                            default:
+                                rejected++;
+                                break;
                         }
                     }
                 }
@@ -256,6 +260,7 @@ public static class GeofeedsCommand
 
                 Interlocked.Increment(ref fetched);
                 Interlocked.Add(ref unauthorized, rejected);
+                Interlocked.Add(ref widenedTotal, widened);
                 if (rejected > 0)
                 {
                     offenders.Add((feed.Key, rejected, kept.Count));
@@ -280,7 +285,7 @@ public static class GeofeedsCommand
         });
 
         return (accepted, new HarvestReport(
-            0, feedCount, fetched, unreadable, failed, accepted.Count, unauthorized,
+            0, feedCount, fetched, unreadable, failed, accepted.Count, widenedTotal, unauthorized,
             offenders.OrderByDescending(entry => entry.Rejected).Take(5).ToList()));
     }
 
@@ -291,7 +296,10 @@ public static class GeofeedsCommand
         output.WriteLine($"  {report.Unreadable,8:N0} answered with something that is not a geofeed");
         output.WriteLine($"  {report.Failed,8:N0} could not be reached");
         output.WriteLine();
-        output.WriteLine($"  {report.Accepted,8:N0} prefixes accepted");
+        output.WriteLine($"  {report.Accepted,8:N0} prefixes accepted"
+            + (report.Widened > 0
+                ? $", {report.Widened:N0} of them on the registry's word that the same organisation holds them"
+                : string.Empty));
         output.WriteLine($"  {report.Unauthorized,8:N0} prefixes discarded: the feed had no registry object for them");
 
         if (report.WorstOffenders.Count > 0)

@@ -7,7 +7,12 @@ namespace eQuantic.IpAtlas.Compiler;
 /// <summary>One geofeed URL and the range whose registry object pointed at it.</summary>
 /// <param name="Range">The inetnum or inet6num that carried the reference.</param>
 /// <param name="Url">Where the operator publishes its geofeed.</param>
-public readonly record struct GeofeedReference(AtlasEntry Range, string Url);
+/// <param name="Organisation">
+/// The <c>org:</c> handle on that object, when it has one. This is what lets a
+/// feed be trusted for more than the objects that named it, without trusting
+/// the feed itself: see <see cref="GeofeedAuthorization"/>.
+/// </param>
+public readonly record struct GeofeedReference(AtlasEntry Range, string Url, string? Organisation);
 
 /// <summary>
 /// Finds geofeed URLs in a registry's bulk whois dump, per RFC 9092.
@@ -43,18 +48,20 @@ public static class WhoisGeofeedIndex
         using (reader)
         {
             AtlasEntry? range = null;
+            string? organisation = null;
             var urls = new List<string>();
 
             while (reader.ReadLine() is { } line)
             {
                 if (line.Length == 0)
                 {
-                    foreach (var reference in Emit(range, urls))
+                    foreach (var reference in Emit(range, organisation, urls))
                     {
                         yield return reference;
                     }
 
                     range = null;
+                    organisation = null;
                     urls.Clear();
                     continue;
                 }
@@ -82,6 +89,10 @@ public static class WhoisGeofeedIndex
                 {
                     range = ParseRange(value.ToString());
                 }
+                else if (name.Equals("org", StringComparison.OrdinalIgnoreCase))
+                {
+                    organisation = value.ToString();
+                }
                 else if (name.Equals("geofeed", StringComparison.OrdinalIgnoreCase))
                 {
                     if (Url(value.ToString()) is { } url)
@@ -97,14 +108,92 @@ public static class WhoisGeofeedIndex
                 }
             }
 
-            foreach (var reference in Emit(range, urls))
+            foreach (var reference in Emit(range, organisation, urls))
             {
                 yield return reference;
             }
         }
     }
 
-    private static IEnumerable<GeofeedReference> Emit(AtlasEntry? range, List<string> urls)
+    /// <summary>
+    /// Every range a registry object records against one of the given
+    /// organisations, ignoring geofeeds entirely.
+    /// <para>
+    /// This is the second pass that <c>--same-org</c> needs. It is separate
+    /// because the set of organisations worth looking for is only known after
+    /// the first pass, and holding every inetnum in a registry would cost far
+    /// more memory than holding the few thousand that belong to publishers.
+    /// </para>
+    /// </summary>
+    /// <param name="path">A registry database dump.</param>
+    /// <param name="organisations">The handles to collect ranges for.</param>
+    public static IEnumerable<(AtlasEntry Range, string Organisation)> ParseOrganisationRanges(
+        string path, IReadOnlySet<string> organisations)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        ArgumentNullException.ThrowIfNull(organisations);
+        return organisations.Count == 0 ? [] : IterateOrganisations(OpenText(path), organisations);
+    }
+
+    private static IEnumerable<(AtlasEntry Range, string Organisation)> IterateOrganisations(
+        TextReader reader, IReadOnlySet<string> organisations)
+    {
+        using (reader)
+        {
+            AtlasEntry? range = null;
+            string? organisation = null;
+
+            while (reader.ReadLine() is { } line)
+            {
+                if (line.Length == 0)
+                {
+                    if (range is { } value && organisation is { } handle && organisations.Contains(handle))
+                    {
+                        yield return (value, handle);
+                    }
+
+                    range = null;
+                    organisation = null;
+                    continue;
+                }
+
+                if (line[0] is '#' or '%' or ' ' or '\t' or '+')
+                {
+                    continue;
+                }
+
+                var colon = line.IndexOf(':', StringComparison.Ordinal);
+                if (colon < 0)
+                {
+                    continue;
+                }
+
+                var name = line.AsSpan(0, colon);
+                var value2 = line.AsSpan(colon + 1).Trim();
+                if (value2.IsEmpty)
+                {
+                    continue;
+                }
+
+                if (name.Equals("inetnum", StringComparison.OrdinalIgnoreCase)
+                    || name.Equals("inet6num", StringComparison.OrdinalIgnoreCase))
+                {
+                    range = ParseRange(value2.ToString());
+                }
+                else if (name.Equals("org", StringComparison.OrdinalIgnoreCase))
+                {
+                    organisation = value2.ToString();
+                }
+            }
+
+            if (range is { } last && organisation is { } lastHandle && organisations.Contains(lastHandle))
+            {
+                yield return (last, lastHandle);
+            }
+        }
+    }
+
+    private static IEnumerable<GeofeedReference> Emit(AtlasEntry? range, string? organisation, List<string> urls)
     {
         if (range is not { } value)
         {
@@ -113,7 +202,7 @@ public static class WhoisGeofeedIndex
 
         foreach (var url in urls)
         {
-            yield return new GeofeedReference(value, url);
+            yield return new GeofeedReference(value, url, organisation);
         }
     }
 

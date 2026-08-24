@@ -97,17 +97,17 @@ public class GeofeedAuthorizationTests
 
     [Fact]
     public void Accepts_a_prefix_inside_a_range_that_referenced_the_feed() =>
-        For("45.10.0.0/16").Covers(AtlasEntry.FromPrefix("45.10.5.0/24")!.Value).ShouldBeTrue();
+        For("45.10.0.0/16").Covers(AtlasEntry.FromPrefix("45.10.5.0/24")!.Value).ShouldBe(Coverage.Referenced);
 
     [Fact]
     public void Accepts_the_authorising_range_itself() =>
-        For("45.10.0.0/16").Covers(AtlasEntry.FromPrefix("45.10.0.0/16")!.Value).ShouldBeTrue();
+        For("45.10.0.0/16").Covers(AtlasEntry.FromPrefix("45.10.0.0/16")!.Value).ShouldBe(Coverage.Referenced);
 
     [Fact]
     public void Refuses_a_prefix_the_publisher_has_no_registry_object_for()
     {
         // The whole point: a feed at any URL claiming someone else's space.
-        For("45.10.0.0/16").Covers(AtlasEntry.FromPrefix("8.8.8.0/24")!.Value).ShouldBeFalse();
+        For("45.10.0.0/16").Covers(AtlasEntry.FromPrefix("8.8.8.0/24")!.Value).ShouldBe(Coverage.None);
     }
 
     [Fact]
@@ -115,7 +115,7 @@ public class GeofeedAuthorizationTests
     {
         // Half inside is not inside. Clipping it would let a feed reach past its
         // own boundary by one bit at a time.
-        For("45.10.0.0/24").Covers(AtlasEntry.FromPrefix("45.10.0.0/16")!.Value).ShouldBeFalse();
+        For("45.10.0.0/24").Covers(AtlasEntry.FromPrefix("45.10.0.0/16")!.Value).ShouldBe(Coverage.None);
     }
 
     [Fact]
@@ -123,8 +123,8 @@ public class GeofeedAuthorizationTests
     {
         var authorization = For("45.10.0.0/16");
 
-        authorization.Covers(AtlasEntry.FromPrefix("2a01:4f8::/32")!.Value).ShouldBeFalse();
-        For("2a01:4f8::/32").Covers(AtlasEntry.FromPrefix("2a01:4f8:1::/48")!.Value).ShouldBeTrue();
+        authorization.Covers(AtlasEntry.FromPrefix("2a01:4f8::/32")!.Value).ShouldBe(Coverage.None);
+        For("2a01:4f8::/32").Covers(AtlasEntry.FromPrefix("2a01:4f8:1::/48")!.Value).ShouldBe(Coverage.Referenced);
     }
 
     [Fact]
@@ -133,9 +133,9 @@ public class GeofeedAuthorizationTests
         // One operator, many registry objects, one file.
         var authorization = For("45.10.0.0/24", "45.20.0.0/24", "2a01:4f8::/32");
 
-        authorization.Covers(AtlasEntry.FromPrefix("45.10.0.128/25")!.Value).ShouldBeTrue();
-        authorization.Covers(AtlasEntry.FromPrefix("45.20.0.0/24")!.Value).ShouldBeTrue();
-        authorization.Covers(AtlasEntry.FromPrefix("45.15.0.0/24")!.Value).ShouldBeFalse();
+        authorization.Covers(AtlasEntry.FromPrefix("45.10.0.128/25")!.Value).ShouldBe(Coverage.Referenced);
+        authorization.Covers(AtlasEntry.FromPrefix("45.20.0.0/24")!.Value).ShouldBe(Coverage.Referenced);
+        authorization.Covers(AtlasEntry.FromPrefix("45.15.0.0/24")!.Value).ShouldBe(Coverage.None);
     }
 
     [Fact]
@@ -143,13 +143,13 @@ public class GeofeedAuthorizationTests
     {
         var authorization = For("45.10.0.0/24", "45.10.1.0/24");
 
-        authorization.RangeCount.ShouldBe(1);
-        authorization.Covers(AtlasEntry.FromPrefix("45.10.0.0/23")!.Value).ShouldBeTrue();
+        authorization.ReferencedRangeCount.ShouldBe(1);
+        authorization.Covers(AtlasEntry.FromPrefix("45.10.0.0/23")!.Value).ShouldBe(Coverage.Referenced);
     }
 
     [Fact]
     public void An_empty_authorisation_covers_nothing() =>
-        For().Covers(AtlasEntry.FromPrefix("45.10.0.0/24")!.Value).ShouldBeFalse();
+        For().Covers(AtlasEntry.FromPrefix("45.10.0.0/24")!.Value).ShouldBe(Coverage.None);
 
     [Fact]
     public void Cannot_be_widened_after_it_is_compacted()
@@ -407,5 +407,101 @@ public class HarvestOutputTests
         {
             File.Delete(path);
         }
+    }
+}
+
+/// <summary>
+/// The one step beyond RFC 9092 this tool will take, and the line it still
+/// will not cross. Operators annotate a handful of objects and publish a feed
+/// for their whole estate; the registry knows the rest is theirs even when
+/// those objects do not say so.
+/// </summary>
+public class SameOrganisationWideningTests
+{
+    private static GeofeedAuthorization Build(
+        string[] referenced, string organisation, params string[] alsoHeldByThatOrganisation)
+    {
+        var authorization = new GeofeedAuthorization();
+        foreach (var prefix in referenced)
+        {
+            authorization.Allow(AtlasEntry.FromPrefix(prefix)!.Value);
+        }
+
+        authorization.AllowOrganisation(organisation);
+        foreach (var prefix in alsoHeldByThatOrganisation)
+        {
+            authorization.AllowSameOrganisation(AtlasEntry.FromPrefix(prefix)!.Value);
+        }
+
+        return authorization.Compact();
+    }
+
+    [Fact]
+    public void Accepts_space_the_registry_records_against_the_same_organisation()
+    {
+        // Hetzner's case: a feed for the whole estate, five objects naming it.
+        var authorization = Build(["5.222.0.0/15"], "ORG-EXAMPLE", "88.99.0.0/16");
+
+        authorization.Covers(AtlasEntry.FromPrefix("88.99.1.0/24")!.Value)
+            .ShouldBe(Coverage.SameOrganisation);
+    }
+
+    [Fact]
+    public void Still_prefers_and_reports_a_direct_reference()
+    {
+        var authorization = Build(["5.222.0.0/15"], "ORG-EXAMPLE", "5.222.0.0/15", "88.99.0.0/16");
+
+        authorization.Covers(AtlasEntry.FromPrefix("5.222.1.0/24")!.Value).ShouldBe(Coverage.Referenced);
+    }
+
+    [Fact]
+    public void Still_refuses_space_no_object_of_theirs_covers()
+    {
+        // The line that matters: widening follows the registry, not the feed.
+        var authorization = Build(["5.222.0.0/15"], "ORG-EXAMPLE", "88.99.0.0/16");
+
+        authorization.Covers(AtlasEntry.FromPrefix("8.8.8.0/24")!.Value).ShouldBe(Coverage.None);
+    }
+
+    [Fact]
+    public void Widening_is_off_unless_organisation_ranges_were_supplied()
+    {
+        var authorization = Build(["5.222.0.0/15"], "ORG-EXAMPLE");
+
+        authorization.Covers(AtlasEntry.FromPrefix("88.99.1.0/24")!.Value).ShouldBe(Coverage.None);
+    }
+
+    [Fact]
+    public void An_object_with_no_org_handle_contributes_nothing_to_widen_from()
+    {
+        var authorization = new GeofeedAuthorization();
+        authorization.Allow(AtlasEntry.FromPrefix("5.222.0.0/15")!.Value);
+        authorization.AllowOrganisation(null);
+        authorization.AllowOrganisation("   ");
+
+        authorization.Organisations.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task The_harvest_counts_widened_acceptances_separately()
+    {
+        var authorization = new GeofeedAuthorization();
+        authorization.Allow(AtlasEntry.FromPrefix("45.10.0.0/24")!.Value);
+        authorization.AllowSameOrganisation(AtlasEntry.FromPrefix("88.99.0.0/16")!.Value);
+        var feeds = new[]
+        {
+            new KeyValuePair<string, GeofeedAuthorization>("https://a.test/g.csv", authorization.Compact()),
+        };
+
+        var (accepted, report) = await GeofeedsCommand.HarvestAsync(
+            feeds,
+            (_, _) => Task.FromResult<string?>(
+                "45.10.0.0/24,DE,,Falkenstein,\n88.99.1.0/24,DE,,Nuremberg,\n8.8.8.0/24,AQ,,Nowhere,\n"),
+            concurrency: 1,
+            CancellationToken.None);
+
+        accepted.Count.ShouldBe(2);
+        report.Widened.ShouldBe(1);
+        report.Unauthorized.ShouldBe(1);
     }
 }

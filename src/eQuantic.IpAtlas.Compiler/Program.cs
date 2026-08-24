@@ -26,8 +26,12 @@ eqatlas — compiles .eqatlas IP geolocation datasets
 
   geofeeds --whois <registry.db.gz>... --out <geofeeds.csv>
           [--concurrency <n>] [--timeout <seconds>] [--attempts <n>] [--limit <n>]
+          [--same-org]
           Harvests the geofeeds operators publish about their own networks,
           keeping only what each one is authorised to claim (RFC 9092).
+          --same-org also accepts prefixes the registry records against an
+          organisation that published the feed. Still the registry's word,
+          not the feed's, and reported separately.
 
   accuracy --dataset <dataset.eqatlas> --truth <cloud-ranges.json>...
           [--baseline <other.eqatlas>] [--min-correct <percent>]
