@@ -21,6 +21,10 @@ eqatlas — compiles .eqatlas IP geolocation datasets
           [--asn-heuristics]                   guess hosting from AS names (off by default)
           [--source <text>] [--built-at <date>]
 
+  accuracy --dataset <dataset.eqatlas> --truth <cloud-ranges.json>...
+          [--baseline <other.eqatlas>] [--min-correct <percent>]
+          Scores a dataset against providers' own published regions.
+
   verify  --dataset <dataset.eqatlas> [--max-age-days <n>]
           Checks a dataset is intact and says how old it is.
 
@@ -36,6 +40,8 @@ switch (parsed.Command)
             .ConfigureAwait(false);
     case "build":
         return BuildCommand.Run(parsed, Console.Out, Console.Error);
+    case "accuracy":
+        return AccuracyCommand.Run(parsed, Console.Out, Console.Error);
     case "verify":
         return InspectCommands.Verify(parsed, Console.Out, Console.Error);
     case "lookup":

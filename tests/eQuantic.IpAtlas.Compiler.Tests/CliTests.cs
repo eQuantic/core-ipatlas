@@ -223,7 +223,19 @@ public class BuildCommandTests : IDisposable
     public void Every_source_in_the_fetch_catalogue_is_https_and_named_for_a_build_flag()
     {
         FetchCommand.Catalogue.ShouldNotBeEmpty();
-        FetchCommand.Catalogue.ShouldAllBe(file => file.Url.StartsWith("https://", StringComparison.Ordinal));
         FetchCommand.Catalogue.ShouldAllBe(file => file.Flag.StartsWith("--", StringComparison.Ordinal));
+        FetchCommand.Catalogue.ShouldAllBe(file =>
+            file.Url.StartsWith("https://", StringComparison.Ordinal)
+            || file.DiscoverFrom!.StartsWith("https://", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Only_optional_sources_may_lack_a_fixed_url()
+    {
+        // A required source behind a page that can be redesigned would make every
+        // scheduled rebuild depend on someone else's HTML.
+        FetchCommand.Catalogue
+            .Where(file => file.Url.Length == 0)
+            .ShouldAllBe(file => file.Optional && file.DiscoverFrom != null);
     }
 }

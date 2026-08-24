@@ -320,6 +320,103 @@ public sealed class DatasetBuilder
             }
         }
 
+        Dedupe(points);
+        return points;
+    }
+
+    /// <summary>
+    /// Sorted, non-overlapping copy of one layer, resolving overlaps the way
+    /// routing does: the most specific prefix wins.
+    /// <para>
+    /// This matters more than it sounds. AWS publishes a /24 in Frankfurt and a
+    /// /12 marked GLOBAL that contains it. Resolving by whichever started first
+    /// let the /12 swallow the /24, and several hundred regional blocks fell
+    /// back to the registry's answer of "United States". A smaller prefix is a
+    /// more specific claim about a smaller piece of the internet, and it wins.
+    /// </para>
+    /// </summary>
+    private static List<AtlasEntry> Normalize(IEnumerable<AtlasEntry> entries)
+    {
+        var sorted = entries
+            .Where(entry => entry.Start <= entry.End && !entry.IsEmpty)
+            .OrderBy(entry => entry.Start)
+            .ThenBy(entry => entry.End - entry.Start)
+            .ToList();
+
+        if (sorted.Count == 0)
+        {
+            return [];
+        }
+
+        var points = new List<UInt128>(sorted.Count * 2);
+        foreach (var entry in sorted)
+        {
+            points.Add(entry.Start);
+            if (entry.End != UInt128.MaxValue)
+            {
+                points.Add(entry.End + UInt128.One);
+            }
+        }
+
+        Dedupe(points);
+
+        // Smallest covering range first, with a stable tie-break so two builds
+        // from the same inputs produce the same bytes.
+        var active = new PriorityQueue<AtlasEntry, (UInt128 Size, UInt128 Start, int Order)>();
+        var result = new List<AtlasEntry>();
+        var next = 0;
+
+        for (var i = 0; i < points.Count; i++)
+        {
+            var start = points[i];
+            while (next < sorted.Count && sorted[next].Start <= start)
+            {
+                var entry = sorted[next];
+                active.Enqueue(entry, (entry.End - entry.Start, entry.Start, next));
+                next++;
+            }
+
+            while (active.Count > 0 && active.Peek().End < start)
+            {
+                active.Dequeue();
+            }
+
+            if (active.Count == 0)
+            {
+                continue;
+            }
+
+            var end = i + 1 < points.Count ? points[i + 1] - UInt128.One : UInt128.MaxValue;
+            var winner = active.Peek() with { Start = start, End = end };
+
+            if (result.Count > 0
+                && result[^1].End + UInt128.One == start
+                && Same(result[^1], winner))
+            {
+                result[^1] = result[^1] with { End = end };
+            }
+            else
+            {
+                result.Add(winner);
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>Whether two entries carry the same payload, so they can be merged.</summary>
+    private static bool Same(AtlasEntry left, AtlasEntry right) =>
+        left.CountryCode == right.CountryCode
+        && left.Asn == right.Asn
+        && left.Flags == right.Flags
+        && left.Latitude.Equals(right.Latitude)
+        && left.Longitude.Equals(right.Longitude)
+        && left.Region == right.Region
+        && left.City == right.City;
+
+    /// <summary>Sorts a list of cut points and drops the duplicates in place.</summary>
+    private static void Dedupe(List<UInt128> points)
+    {
         points.Sort();
         var unique = 0;
         for (var i = 0; i < points.Count; i++)
@@ -331,38 +428,6 @@ public sealed class DatasetBuilder
         }
 
         points.RemoveRange(unique, points.Count - unique);
-        return points;
-    }
-
-    /// <summary>Sorted, overlap-resolved (first wins) copy of one layer.</summary>
-    private static List<AtlasEntry> Normalize(IEnumerable<AtlasEntry> entries)
-    {
-        var sorted = entries
-            .Where(entry => entry.Start <= entry.End && !entry.IsEmpty)
-            .OrderBy(entry => entry.Start)
-            .ThenBy(entry => entry.End)
-            .ToList();
-
-        var result = new List<AtlasEntry>(sorted.Count);
-        foreach (var entry in sorted)
-        {
-            if (result.Count > 0 && entry.Start <= result[^1].End)
-            {
-                // Overlap inside one source: honour the earlier record, keep any tail.
-                if (entry.End <= result[^1].End || result[^1].End == UInt128.MaxValue)
-                {
-                    continue;
-                }
-
-                result.Add(entry with { Start = result[^1].End + UInt128.One });
-            }
-            else
-            {
-                result.Add(entry);
-            }
-        }
-
-        return result;
     }
 
     /// <summary>Interns distinct places and their names so each is written once.</summary>
