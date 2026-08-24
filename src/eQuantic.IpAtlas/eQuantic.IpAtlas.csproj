@@ -5,6 +5,10 @@
     <PackageId>eQuantic.IpAtlas</PackageId>
     <Description>IP geolocation and network intelligence for .NET: a compact binary dataset format compiled from public RIR delegation data, fast in-memory range lookups (country, ASN), and travel-velocity math for impossible-travel risk signals. No external services, no license-encumbered databases.</Description>
     <PackageTags>ip;geoip;geolocation;asn;rir;security;risk;impossible-travel</PackageTags>
+    <!-- Compare every pack against what 2.0.0 actually shipped. Together with
+         PublicAPI.Shipped.txt this means a break has to be deliberate twice:
+         once in the surface file, once by moving this baseline forward. -->
+    <PackageValidationBaselineVersion>2.0.0</PackageValidationBaselineVersion>
   </PropertyGroup>
   <ItemGroup>
     <!-- Tracks the public surface in PublicAPI.*.txt, so a breaking change has to
