@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <PackageId>eQuantic.IpIntel.Compiler</PackageId>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>eqip</ToolCommandName>
+    <RootNamespace>eQuantic.IpIntel.Compiler</RootNamespace>
+    <Description>Compiles .eqip IP-intelligence datasets for eQuantic.IpIntel from public RIR delegated-extended files (country) and optional ip-to-ASN TSV data. dotnet tool: eqip build --rir delegated-ripencc-extended-latest ... --out dataset.eqip</Description>
+    <PackageTags>ip;geoip;rir;asn;dataset;compiler;dotnet-tool</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\eQuantic.IpIntel\eQuantic.IpIntel.csproj" />
+  </ItemGroup>
+</Project>

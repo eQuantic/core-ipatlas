@@ -1,0 +1,39 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v10.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v10.0": {
+      "eQuantic.IpIntel.Compiler/0.1.0": {
+        "dependencies": {
+          "eQuantic.IpIntel": "0.1.0"
+        },
+        "runtime": {
+          "eQuantic.IpIntel.Compiler.dll": {}
+        }
+      },
+      "eQuantic.IpIntel/0.1.0": {
+        "runtime": {
+          "eQuantic.IpIntel.dll": {
+            "assemblyVersion": "0.1.0.0",
+            "fileVersion": "0.1.0.0"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "eQuantic.IpIntel.Compiler/0.1.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "eQuantic.IpIntel/0.1.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}

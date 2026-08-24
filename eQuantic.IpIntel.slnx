@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/root/">
+    <File Path="global.json" />
+    <File Path="LICENSE" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/eQuantic.IpIntel.Compiler/eQuantic.IpIntel.Compiler.csproj" />
+    <Project Path="src/eQuantic.IpIntel/eQuantic.IpIntel.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/eQuantic.IpIntel.Tests/eQuantic.IpIntel.Tests.csproj" />
+  </Folder>
+</Solution>

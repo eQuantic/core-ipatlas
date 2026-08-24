@@ -1,0 +1,165 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>eQuantic.IpIntel</name>
+    </assembly>
+    <members>
+        <member name="T:eQuantic.IpIntel.EqipFormat">
+            <summary>
+            The .eqip binary layout, shared by the compiler (writer) and the database
+            (reader). One flat file: a small header, then the IPv4 records, then the
+            IPv6 records, each section sorted by range start so lookups are a binary
+            search. Countries are two ASCII letters packed into a ushort; zero means
+            the range carries none.
+            </summary>
+        </member>
+        <member name="F:eQuantic.IpIntel.EqipFormat.Magic">
+            <summary>File magic, "EQIP" in little-endian.</summary>
+        </member>
+        <member name="F:eQuantic.IpIntel.EqipFormat.Version">
+            <summary>Current layout version.</summary>
+        </member>
+        <member name="F:eQuantic.IpIntel.EqipFormat.V4RecordSize">
+            <summary>Bytes per IPv4 record.</summary>
+        </member>
+        <member name="F:eQuantic.IpIntel.EqipFormat.V6RecordSize">
+            <summary>Bytes per IPv6 record.</summary>
+        </member>
+        <member name="M:eQuantic.IpIntel.EqipFormat.PackCountry(System.String)">
+            <summary>Two ASCII letters into a ushort; zero for none.</summary>
+        </member>
+        <member name="M:eQuantic.IpIntel.EqipFormat.UnpackCountry(System.UInt16)">
+            <summary>The inverse of <see cref="M:eQuantic.IpIntel.EqipFormat.PackCountry(System.String)"/>.</summary>
+        </member>
+        <member name="M:eQuantic.IpIntel.EqipFormat.WriteHeader(System.IO.Stream,System.DateTimeOffset,System.String,System.Int32,System.Int32)">
+            <summary>Writes the header; returns nothing the caller must track — counts travel in it.</summary>
+        </member>
+        <member name="M:eQuantic.IpIntel.EqipFormat.WriteV4Record(System.IO.Stream,System.UInt32,System.UInt32,System.UInt16,System.UInt32)">
+            <summary>Appends one IPv4 range record.</summary>
+        </member>
+        <member name="M:eQuantic.IpIntel.EqipFormat.WriteV6Record(System.IO.Stream,System.UInt128,System.UInt128,System.UInt16,System.UInt32)">
+            <summary>Appends one IPv6 range record.</summary>
+        </member>
+        <member name="T:eQuantic.IpIntel.Geo.CountryCentroids">
+            <summary>
+            Approximate geographic centroids per ISO 3166-1 alpha-2 code. Precision of
+            a degree or two is deliberate and sufficient: these feed travel-velocity
+            assessments at airliner granularity, not maps. Countries the table does
+            not know resolve to null and assessments answer "unknown" rather than
+            guessing.
+            </summary>
+        </member>
+        <member name="M:eQuantic.IpIntel.Geo.CountryCentroids.Get(System.String)">
+            <summary>Latitude/longitude for a country code, or null when unknown.</summary>
+        </member>
+        <member name="T:eQuantic.IpIntel.Geo.TravelAssessment">
+            <summary>The verdict on one pair of sightings.</summary>
+            <param name="Plausible">
+            True when the implied speed is humanly achievable, false when it is not —
+            and null when either side's location is unknown, because "we cannot tell"
+            must never masquerade as either answer.
+            </param>
+            <param name="DistanceKm">Great-circle distance between the sightings, when both are known.</param>
+            <param name="KilometersPerHour">The implied speed, when computable.</param>
+        </member>
+        <member name="M:eQuantic.IpIntel.Geo.TravelAssessment.#ctor(System.Nullable{System.Boolean},System.Nullable{System.Double},System.Nullable{System.Double})">
+            <summary>The verdict on one pair of sightings.</summary>
+            <param name="Plausible">
+            True when the implied speed is humanly achievable, false when it is not —
+            and null when either side's location is unknown, because "we cannot tell"
+            must never masquerade as either answer.
+            </param>
+            <param name="DistanceKm">Great-circle distance between the sightings, when both are known.</param>
+            <param name="KilometersPerHour">The implied speed, when computable.</param>
+        </member>
+        <member name="P:eQuantic.IpIntel.Geo.TravelAssessment.Plausible">
+            <summary>
+            True when the implied speed is humanly achievable, false when it is not —
+            and null when either side's location is unknown, because "we cannot tell"
+            must never masquerade as either answer.
+            </summary>
+        </member>
+        <member name="P:eQuantic.IpIntel.Geo.TravelAssessment.DistanceKm">
+            <summary>Great-circle distance between the sightings, when both are known.</summary>
+        </member>
+        <member name="P:eQuantic.IpIntel.Geo.TravelAssessment.KilometersPerHour">
+            <summary>The implied speed, when computable.</summary>
+        </member>
+        <member name="F:eQuantic.IpIntel.Geo.TravelAssessment.Unknown">
+            <summary>Neither side located: no verdict.</summary>
+        </member>
+        <member name="T:eQuantic.IpIntel.Geo.Velocity">
+            <summary>
+            Impossible-travel math over country centroids: was there enough time to
+            get from where the last sign-in came from to where this one did? Airliner
+            speed is the default bar — nobody beats a Boeing commuting.
+            </summary>
+        </member>
+        <member name="F:eQuantic.IpIntel.Geo.Velocity.DefaultMaxKilometersPerHour">
+            <summary>Commercial-flight ceiling, generous on purpose.</summary>
+        </member>
+        <member name="M:eQuantic.IpIntel.Geo.Velocity.Assess(System.String,System.String,System.TimeSpan,System.Double)">
+            <summary>Judges whether the move between two sightings was humanly possible in the elapsed time.</summary>
+        </member>
+        <member name="M:eQuantic.IpIntel.Geo.Velocity.HaversineKm(System.Double,System.Double,System.Double,System.Double)">
+            <summary>Great-circle distance between two coordinates, in kilometers.</summary>
+        </member>
+        <member name="T:eQuantic.IpIntel.IpInfo">
+            <summary>What the dataset knows about one address.</summary>
+            <param name="CountryCode">ISO 3166-1 alpha-2, upper case, or null when the range carries no country.</param>
+            <param name="Asn">Autonomous system number, or null when the dataset was built without ASN data.</param>
+        </member>
+        <member name="M:eQuantic.IpIntel.IpInfo.#ctor(System.String,System.Nullable{System.UInt32})">
+            <summary>What the dataset knows about one address.</summary>
+            <param name="CountryCode">ISO 3166-1 alpha-2, upper case, or null when the range carries no country.</param>
+            <param name="Asn">Autonomous system number, or null when the dataset was built without ASN data.</param>
+        </member>
+        <member name="P:eQuantic.IpIntel.IpInfo.CountryCode">
+            <summary>ISO 3166-1 alpha-2, upper case, or null when the range carries no country.</summary>
+        </member>
+        <member name="P:eQuantic.IpIntel.IpInfo.Asn">
+            <summary>Autonomous system number, or null when the dataset was built without ASN data.</summary>
+        </member>
+        <member name="F:eQuantic.IpIntel.IpInfo.Unknown">
+            <summary>An address the dataset holds no range for.</summary>
+        </member>
+        <member name="P:eQuantic.IpIntel.IpInfo.IsKnown">
+            <summary>Whether the dataset had anything at all for the address.</summary>
+        </member>
+        <member name="T:eQuantic.IpIntel.IpIntelDatabase">
+            <summary>
+            An immutable, fully in-memory .eqip dataset. Loading parses the file into
+            structure-of-arrays form so a lookup is one binary search over contiguous
+            range starts — tens of nanoseconds, no allocation, safe from any thread.
+            Swap datasets by loading a new instance and replacing the reference.
+            </summary>
+        </member>
+        <member name="P:eQuantic.IpIntel.IpIntelDatabase.BuiltAt">
+            <summary>When the dataset was compiled.</summary>
+        </member>
+        <member name="P:eQuantic.IpIntel.IpIntelDatabase.Source">
+            <summary>What the compiler said it was built from.</summary>
+        </member>
+        <member name="P:eQuantic.IpIntel.IpIntelDatabase.V4RangeCount">
+            <summary>Loaded IPv4 ranges.</summary>
+        </member>
+        <member name="P:eQuantic.IpIntel.IpIntelDatabase.V6RangeCount">
+            <summary>Loaded IPv6 ranges.</summary>
+        </member>
+        <member name="M:eQuantic.IpIntel.IpIntelDatabase.Open(System.String)">
+            <summary>Loads a dataset from a file.</summary>
+        </member>
+        <member name="M:eQuantic.IpIntel.IpIntelDatabase.Open(System.IO.Stream)">
+            <summary>Loads a dataset from a stream.</summary>
+        </member>
+        <member name="M:eQuantic.IpIntel.IpIntelDatabase.Lookup(System.String)">
+            <summary>Looks a textual address up; unparsable input answers unknown.</summary>
+        </member>
+        <member name="M:eQuantic.IpIntel.IpIntelDatabase.Lookup(System.Net.IPAddress)">
+            <summary>Looks an address up: country and ASN when the dataset knows the range.</summary>
+        </member>
+        <member name="M:eQuantic.IpIntel.IpIntelDatabase.UpperBound``1(``0[],``0)">
+            <summary>Index of the last element &lt;= value, or -1 when value precedes them all.</summary>
+        </member>
+    </members>
+</doc>

@@ -1,0 +1,13 @@
+/Users/admin.edgar.a.mesquita/projects/equantic/core-ipintel/src/eQuantic.IpIntel/bin/Release/net10.0/eQuantic.IpIntel.deps.json
+/Users/admin.edgar.a.mesquita/projects/equantic/core-ipintel/src/eQuantic.IpIntel/bin/Release/net10.0/eQuantic.IpIntel.dll
+/Users/admin.edgar.a.mesquita/projects/equantic/core-ipintel/src/eQuantic.IpIntel/bin/Release/net10.0/eQuantic.IpIntel.pdb
+/Users/admin.edgar.a.mesquita/projects/equantic/core-ipintel/src/eQuantic.IpIntel/bin/Release/net10.0/eQuantic.IpIntel.xml
+/Users/admin.edgar.a.mesquita/projects/equantic/core-ipintel/src/eQuantic.IpIntel/obj/Release/net10.0/eQuantic.IpIntel.GeneratedMSBuildEditorConfig.editorconfig
+/Users/admin.edgar.a.mesquita/projects/equantic/core-ipintel/src/eQuantic.IpIntel/obj/Release/net10.0/eQuantic.IpIntel.AssemblyInfoInputs.cache
+/Users/admin.edgar.a.mesquita/projects/equantic/core-ipintel/src/eQuantic.IpIntel/obj/Release/net10.0/eQuantic.IpIntel.AssemblyInfo.cs
+/Users/admin.edgar.a.mesquita/projects/equantic/core-ipintel/src/eQuantic.IpIntel/obj/Release/net10.0/eQuantic.IpIntel.csproj.CoreCompileInputs.cache
+/Users/admin.edgar.a.mesquita/projects/equantic/core-ipintel/src/eQuantic.IpIntel/obj/Release/net10.0/eQuantic.IpIntel.dll
+/Users/admin.edgar.a.mesquita/projects/equantic/core-ipintel/src/eQuantic.IpIntel/obj/Release/net10.0/refint/eQuantic.IpIntel.dll
+/Users/admin.edgar.a.mesquita/projects/equantic/core-ipintel/src/eQuantic.IpIntel/obj/Release/net10.0/eQuantic.IpIntel.xml
+/Users/admin.edgar.a.mesquita/projects/equantic/core-ipintel/src/eQuantic.IpIntel/obj/Release/net10.0/eQuantic.IpIntel.pdb
+/Users/admin.edgar.a.mesquita/projects/equantic/core-ipintel/src/eQuantic.IpIntel/obj/Release/net10.0/ref/eQuantic.IpIntel.dll
