@@ -3,8 +3,8 @@
     <Version>0.1.0</Version>
     <Authors>eQuantic Tech</Authors>
     <Copyright>2026 eQuantic Tech</Copyright>
-    <PackageProjectUrl>https://github.com/eQuantic/core-ipintel</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/eQuantic/core-ipintel</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/eQuantic/core-ipatlas</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/eQuantic/core-ipatlas</RepositoryUrl>
     <RepositoryType>Git</RepositoryType>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>

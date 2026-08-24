@@ -1,9 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
-    <IsAotCompatible>true</IsAotCompatible>
-    <PackageId>eQuantic.IpIntel</PackageId>
-    <Description>IP intelligence for .NET: a compact binary dataset format compiled from public RIR delegation data, fast in-memory range lookups (country, ASN), and travel-velocity math for impossible-travel risk signals. No external services, no license-encumbered databases.</Description>
-    <PackageTags>ip;geoip;geolocation;asn;rir;security;risk;impossible-travel</PackageTags>
-  </PropertyGroup>
-</Project>

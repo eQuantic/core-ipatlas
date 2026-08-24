@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <PackageId>eQuantic.IpAtlas.Compiler</PackageId>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>eqatlas</ToolCommandName>
+    <RootNamespace>eQuantic.IpAtlas.Compiler</RootNamespace>
+    <Description>Compiles .eqatlas IP geolocation datasets for eQuantic.IpAtlas from public RIR delegated-extended files (country) and optional ip-to-ASN TSV data. dotnet tool: eqatlas build --rir delegated-ripencc-extended-latest ... --out dataset.eqatlas</Description>
+    <PackageTags>ip;geoip;rir;asn;dataset;compiler;dotnet-tool</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\eQuantic.IpAtlas\eQuantic.IpAtlas.csproj" />
+  </ItemGroup>
+</Project>

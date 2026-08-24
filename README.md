@@ -1,15 +1,15 @@
-# eQuantic.IpIntel
+# eQuantic.IpAtlas
 
-IP intelligence for .NET with **no external services and no license-encumbered
+IP geolocation and network intelligence for .NET with **no external services and no license-encumbered
 databases**: compile your own dataset from the five RIRs' public delegation
 files, load it in memory, and answer *"where is this address, and could its
 owner really have moved that fast?"* in nanoseconds.
 
-- **`eQuantic.IpIntel`** — the runtime: a compact binary dataset (`.eqip`),
+- **`eQuantic.IpAtlas`** — the runtime: a compact binary dataset (`.eqatlas`),
   structure-of-arrays binary-search lookups (~130 ns), country + ASN answers,
   and travel-velocity math for impossible-travel risk signals. Zero
   dependencies, AOT-compatible.
-- **`eQuantic.IpIntel.Compiler`** — the `eqip` dotnet tool and library that
+- **`eQuantic.IpAtlas.Compiler`** — the `eqatlas` dotnet tool and library that
   builds datasets from RIR *delegated-extended* files (country, authoritative
   and license-free) and optional ip-to-ASN TSV data.
 
@@ -23,8 +23,8 @@ curl -O https://ftp.apnic.net/stats/apnic/delegated-apnic-extended-latest
 curl -O https://ftp.lacnic.net/pub/stats/lacnic/delegated-lacnic-extended-latest
 curl -O https://ftp.afrinic.net/pub/stats/afrinic/delegated-afrinic-extended-latest
 
-dotnet tool install -g eQuantic.IpIntel.Compiler
-eqip build --rir delegated-*-extended-latest --out world.eqip --source "5 RIRs $(date +%F)"
+dotnet tool install -g eQuantic.IpAtlas.Compiler
+eqatlas build --rir delegated-*-extended-latest --out world.eqatlas --source "5 RIRs $(date +%F)"
 ```
 
 All five files compile to a few megabytes. Add `--asn ip2asn-combined.tsv`
@@ -33,10 +33,10 @@ All five files compile to a few megabytes. Add `--asn ip2asn-combined.tsv`
 ## Look things up
 
 ```csharp
-using eQuantic.IpIntel;
-using eQuantic.IpIntel.Geo;
+using eQuantic.IpAtlas;
+using eQuantic.IpAtlas.Geo;
 
-var db = IpIntelDatabase.Open("world.eqip");
+var db = IpAtlasDatabase.Open("world.eqatlas");
 
 var info = db.Lookup("193.136.128.1");   // IpInfo { CountryCode = "PT", Asn = ... }
 
