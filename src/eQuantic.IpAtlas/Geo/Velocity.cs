@@ -74,9 +74,12 @@ public static class Velocity
     public const double DefaultMaxKilometersPerHour = 950.0;
 
     /// <summary>Judges whether the move between two countries was possible in the elapsed time.</summary>
+    public static TravelAssessment Assess(string? fromCountry, string? toCountry, TimeSpan elapsed) =>
+        Assess(fromCountry, toCountry, elapsed, DefaultMaxKilometersPerHour);
+
+    /// <summary>Judges the move between two countries against a chosen speed ceiling.</summary>
     public static TravelAssessment Assess(
-        string? fromCountry, string? toCountry, TimeSpan elapsed,
-        double maxKilometersPerHour = DefaultMaxKilometersPerHour) =>
+        string? fromCountry, string? toCountry, TimeSpan elapsed, double maxKilometersPerHour) =>
         Assess(
             Locate(fromCountry, null),
             Locate(toCountry, null),
@@ -89,9 +92,20 @@ public static class Velocity
     /// centroid otherwise, and no verdict at all when an address is anycast or
     /// an anonymizer.
     /// </summary>
+    public static TravelAssessment Assess(IpInfo from, IpInfo to, TimeSpan elapsed) =>
+        Assess(from, to, elapsed, DefaultMaxKilometersPerHour);
+
+    /// <summary>
+    /// Judges two sightings against a chosen speed ceiling. Overloads carry no
+    /// optional parameters on purpose: a default that shifts between overloads
+    /// is a behaviour change nobody has to write down.
+    /// </summary>
+    /// <param name="from">Where the earlier sighting came from.</param>
+    /// <param name="to">Where the later one came from.</param>
+    /// <param name="elapsed">Time between them.</param>
+    /// <param name="maxKilometersPerHour">The fastest a person is assumed to travel.</param>
     public static TravelAssessment Assess(
-        IpInfo from, IpInfo to, TimeSpan elapsed,
-        double maxKilometersPerHour = DefaultMaxKilometersPerHour)
+        IpInfo from, IpInfo to, TimeSpan elapsed, double maxKilometersPerHour)
     {
         if (!from.IsLocatablePerson || !to.IsLocatablePerson)
         {

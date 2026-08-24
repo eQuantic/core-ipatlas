@@ -1,0 +1,188 @@
+const eQuantic.IpAtlas.AtlasFormat.ChecksumSize = 4 -> int
+const eQuantic.IpAtlas.AtlasFormat.LocationRecordSize = 16 -> int
+const eQuantic.IpAtlas.AtlasFormat.Magic = 1397511233 -> uint
+const eQuantic.IpAtlas.AtlasFormat.MaxDatasetBytes = 1073741824 -> long
+const eQuantic.IpAtlas.AtlasFormat.MaxRecordCount = 67108864 -> int
+const eQuantic.IpAtlas.AtlasFormat.MinReadableVersion = 1 -> ushort
+const eQuantic.IpAtlas.AtlasFormat.SectionEntrySize = 21 -> int
+const eQuantic.IpAtlas.AtlasFormat.V1RecordSizeV4 = 14 -> int
+const eQuantic.IpAtlas.AtlasFormat.V1RecordSizeV6 = 38 -> int
+const eQuantic.IpAtlas.AtlasFormat.V4RecordSize = 20 -> int
+const eQuantic.IpAtlas.AtlasFormat.V6RecordSize = 44 -> int
+const eQuantic.IpAtlas.AtlasFormat.Version = 2 -> ushort
+const eQuantic.IpAtlas.Geo.CountrySpans.DefaultKm = 500 -> double
+const eQuantic.IpAtlas.Geo.CountrySpans.IntraCountryToleranceKm = 1500 -> double
+const eQuantic.IpAtlas.Geo.Velocity.DefaultMaxKilometersPerHour = 950 -> double
+eQuantic.IpAtlas.AtlasFormat
+eQuantic.IpAtlas.AtlasSection
+eQuantic.IpAtlas.AtlasSection.AtlasSection() -> void
+eQuantic.IpAtlas.AtlasSection.AtlasSection(eQuantic.IpAtlas.AtlasSectionKind Kind, int Count, long Offset, long Length) -> void
+eQuantic.IpAtlas.AtlasSection.Count.get -> int
+eQuantic.IpAtlas.AtlasSection.Count.init -> void
+eQuantic.IpAtlas.AtlasSection.Deconstruct(out eQuantic.IpAtlas.AtlasSectionKind Kind, out int Count, out long Offset, out long Length) -> void
+eQuantic.IpAtlas.AtlasSection.Equals(eQuantic.IpAtlas.AtlasSection other) -> bool
+eQuantic.IpAtlas.AtlasSection.Kind.get -> eQuantic.IpAtlas.AtlasSectionKind
+eQuantic.IpAtlas.AtlasSection.Kind.init -> void
+eQuantic.IpAtlas.AtlasSection.Length.get -> long
+eQuantic.IpAtlas.AtlasSection.Length.init -> void
+eQuantic.IpAtlas.AtlasSection.Offset.get -> long
+eQuantic.IpAtlas.AtlasSection.Offset.init -> void
+eQuantic.IpAtlas.AtlasSectionKind
+eQuantic.IpAtlas.AtlasSectionKind.Locations = 3 -> eQuantic.IpAtlas.AtlasSectionKind
+eQuantic.IpAtlas.AtlasSectionKind.Strings = 4 -> eQuantic.IpAtlas.AtlasSectionKind
+eQuantic.IpAtlas.AtlasSectionKind.Unknown = 0 -> eQuantic.IpAtlas.AtlasSectionKind
+eQuantic.IpAtlas.AtlasSectionKind.V4Ranges = 1 -> eQuantic.IpAtlas.AtlasSectionKind
+eQuantic.IpAtlas.AtlasSectionKind.V6Ranges = 2 -> eQuantic.IpAtlas.AtlasSectionKind
+eQuantic.IpAtlas.Crc32
+eQuantic.IpAtlas.Geo.CountryCentroids
+eQuantic.IpAtlas.Geo.CountrySpans
+eQuantic.IpAtlas.Geo.TravelAssessment
+eQuantic.IpAtlas.Geo.TravelAssessment.Deconstruct(out bool? Plausible, out double? DistanceKm, out double? KilometersPerHour, out eQuantic.IpAtlas.Geo.TravelPrecision Precision, out eQuantic.IpAtlas.Geo.TravelReason Reason) -> void
+eQuantic.IpAtlas.Geo.TravelAssessment.DistanceKm.get -> double?
+eQuantic.IpAtlas.Geo.TravelAssessment.DistanceKm.init -> void
+eQuantic.IpAtlas.Geo.TravelAssessment.Equals(eQuantic.IpAtlas.Geo.TravelAssessment other) -> bool
+eQuantic.IpAtlas.Geo.TravelAssessment.KilometersPerHour.get -> double?
+eQuantic.IpAtlas.Geo.TravelAssessment.KilometersPerHour.init -> void
+eQuantic.IpAtlas.Geo.TravelAssessment.Plausible.get -> bool?
+eQuantic.IpAtlas.Geo.TravelAssessment.Plausible.init -> void
+eQuantic.IpAtlas.Geo.TravelAssessment.Precision.get -> eQuantic.IpAtlas.Geo.TravelPrecision
+eQuantic.IpAtlas.Geo.TravelAssessment.Precision.init -> void
+eQuantic.IpAtlas.Geo.TravelAssessment.Reason.get -> eQuantic.IpAtlas.Geo.TravelReason
+eQuantic.IpAtlas.Geo.TravelAssessment.Reason.init -> void
+eQuantic.IpAtlas.Geo.TravelAssessment.TravelAssessment() -> void
+eQuantic.IpAtlas.Geo.TravelAssessment.TravelAssessment(bool? Plausible, double? DistanceKm, double? KilometersPerHour, eQuantic.IpAtlas.Geo.TravelPrecision Precision = eQuantic.IpAtlas.Geo.TravelPrecision.None, eQuantic.IpAtlas.Geo.TravelReason Reason = eQuantic.IpAtlas.Geo.TravelReason.Assessed) -> void
+eQuantic.IpAtlas.Geo.TravelPrecision
+eQuantic.IpAtlas.Geo.TravelPrecision.Coordinates = 2 -> eQuantic.IpAtlas.Geo.TravelPrecision
+eQuantic.IpAtlas.Geo.TravelPrecision.Country = 1 -> eQuantic.IpAtlas.Geo.TravelPrecision
+eQuantic.IpAtlas.Geo.TravelPrecision.None = 0 -> eQuantic.IpAtlas.Geo.TravelPrecision
+eQuantic.IpAtlas.Geo.TravelReason
+eQuantic.IpAtlas.Geo.TravelReason.Assessed = 0 -> eQuantic.IpAtlas.Geo.TravelReason
+eQuantic.IpAtlas.Geo.TravelReason.CountryTooLarge = 4 -> eQuantic.IpAtlas.Geo.TravelReason
+eQuantic.IpAtlas.Geo.TravelReason.NotAPersonsLocation = 2 -> eQuantic.IpAtlas.Geo.TravelReason
+eQuantic.IpAtlas.Geo.TravelReason.NotLocated = 1 -> eQuantic.IpAtlas.Geo.TravelReason
+eQuantic.IpAtlas.Geo.TravelReason.OutOfOrder = 3 -> eQuantic.IpAtlas.Geo.TravelReason
+eQuantic.IpAtlas.Geo.Velocity
+eQuantic.IpAtlas.IpAtlasDatabase
+eQuantic.IpAtlas.IpAtlasDatabase.Age.get -> System.TimeSpan
+eQuantic.IpAtlas.IpAtlasDatabase.BuiltAt.get -> System.DateTimeOffset
+eQuantic.IpAtlas.IpAtlasDatabase.FormatVersion.get -> int
+eQuantic.IpAtlas.IpAtlasDatabase.LocationCount.get -> int
+eQuantic.IpAtlas.IpAtlasDatabase.Lookup(System.Net.IPAddress! address) -> eQuantic.IpAtlas.IpInfo
+eQuantic.IpAtlas.IpAtlasDatabase.Lookup(string! ipAddress) -> eQuantic.IpAtlas.IpInfo
+eQuantic.IpAtlas.IpAtlasDatabase.Source.get -> string!
+eQuantic.IpAtlas.IpAtlasDatabase.V4RangeCount.get -> int
+eQuantic.IpAtlas.IpAtlasDatabase.V6RangeCount.get -> int
+eQuantic.IpAtlas.IpInfo
+eQuantic.IpAtlas.IpInfo.Asn.get -> uint?
+eQuantic.IpAtlas.IpInfo.Asn.init -> void
+eQuantic.IpAtlas.IpInfo.CountryCode.get -> string?
+eQuantic.IpAtlas.IpInfo.CountryCode.init -> void
+eQuantic.IpAtlas.IpInfo.Deconstruct(out string? CountryCode, out uint? Asn, out eQuantic.IpAtlas.NetworkTraits Traits, out eQuantic.IpAtlas.IpScope Scope, out eQuantic.IpAtlas.IpLocation? Location) -> void
+eQuantic.IpAtlas.IpInfo.Equals(eQuantic.IpAtlas.IpInfo other) -> bool
+eQuantic.IpAtlas.IpInfo.IpInfo() -> void
+eQuantic.IpAtlas.IpInfo.IpInfo(string? CountryCode, uint? Asn, eQuantic.IpAtlas.NetworkTraits Traits = eQuantic.IpAtlas.NetworkTraits.None, eQuantic.IpAtlas.IpScope Scope = eQuantic.IpAtlas.IpScope.Public, eQuantic.IpAtlas.IpLocation? Location = null) -> void
+eQuantic.IpAtlas.IpInfo.IsAnonymizer.get -> bool
+eQuantic.IpAtlas.IpInfo.IsAnycast.get -> bool
+eQuantic.IpAtlas.IpInfo.IsHosting.get -> bool
+eQuantic.IpAtlas.IpInfo.IsKnown.get -> bool
+eQuantic.IpAtlas.IpInfo.IsLocatablePerson.get -> bool
+eQuantic.IpAtlas.IpInfo.IsSpecialPurpose.get -> bool
+eQuantic.IpAtlas.IpInfo.Location.get -> eQuantic.IpAtlas.IpLocation?
+eQuantic.IpAtlas.IpInfo.Location.init -> void
+eQuantic.IpAtlas.IpInfo.Scope.get -> eQuantic.IpAtlas.IpScope
+eQuantic.IpAtlas.IpInfo.Scope.init -> void
+eQuantic.IpAtlas.IpInfo.Traits.get -> eQuantic.IpAtlas.NetworkTraits
+eQuantic.IpAtlas.IpInfo.Traits.init -> void
+eQuantic.IpAtlas.IpLocation
+eQuantic.IpAtlas.IpLocation.City.get -> string?
+eQuantic.IpAtlas.IpLocation.City.init -> void
+eQuantic.IpAtlas.IpLocation.Deconstruct(out double? Latitude, out double? Longitude, out string? Region, out string? City, out eQuantic.IpAtlas.LocationSource Source) -> void
+eQuantic.IpAtlas.IpLocation.Equals(eQuantic.IpAtlas.IpLocation other) -> bool
+eQuantic.IpAtlas.IpLocation.HasCoordinates.get -> bool
+eQuantic.IpAtlas.IpLocation.IpLocation() -> void
+eQuantic.IpAtlas.IpLocation.IpLocation(double? Latitude, double? Longitude, string? Region, string? City, eQuantic.IpAtlas.LocationSource Source) -> void
+eQuantic.IpAtlas.IpLocation.Latitude.get -> double?
+eQuantic.IpAtlas.IpLocation.Latitude.init -> void
+eQuantic.IpAtlas.IpLocation.Longitude.get -> double?
+eQuantic.IpAtlas.IpLocation.Longitude.init -> void
+eQuantic.IpAtlas.IpLocation.Region.get -> string?
+eQuantic.IpAtlas.IpLocation.Region.init -> void
+eQuantic.IpAtlas.IpLocation.Source.get -> eQuantic.IpAtlas.LocationSource
+eQuantic.IpAtlas.IpLocation.Source.init -> void
+eQuantic.IpAtlas.IpScope
+eQuantic.IpAtlas.IpScope.Benchmarking = 8 -> eQuantic.IpAtlas.IpScope
+eQuantic.IpAtlas.IpScope.Broadcast = 10 -> eQuantic.IpAtlas.IpScope
+eQuantic.IpAtlas.IpScope.Documentation = 7 -> eQuantic.IpAtlas.IpScope
+eQuantic.IpAtlas.IpScope.LinkLocal = 4 -> eQuantic.IpAtlas.IpScope
+eQuantic.IpAtlas.IpScope.Loopback = 2 -> eQuantic.IpAtlas.IpScope
+eQuantic.IpAtlas.IpScope.Multicast = 9 -> eQuantic.IpAtlas.IpScope
+eQuantic.IpAtlas.IpScope.Private = 3 -> eQuantic.IpAtlas.IpScope
+eQuantic.IpAtlas.IpScope.ProtocolAssignment = 11 -> eQuantic.IpAtlas.IpScope
+eQuantic.IpAtlas.IpScope.Public = 0 -> eQuantic.IpAtlas.IpScope
+eQuantic.IpAtlas.IpScope.Reserved = 12 -> eQuantic.IpAtlas.IpScope
+eQuantic.IpAtlas.IpScope.SharedAddressSpace = 5 -> eQuantic.IpAtlas.IpScope
+eQuantic.IpAtlas.IpScope.UniqueLocal = 6 -> eQuantic.IpAtlas.IpScope
+eQuantic.IpAtlas.IpScope.Unspecified = 1 -> eQuantic.IpAtlas.IpScope
+eQuantic.IpAtlas.IpScopes
+eQuantic.IpAtlas.LocationSource
+eQuantic.IpAtlas.LocationSource.CloudProvider = 3 -> eQuantic.IpAtlas.LocationSource
+eQuantic.IpAtlas.LocationSource.Geofeed = 2 -> eQuantic.IpAtlas.LocationSource
+eQuantic.IpAtlas.LocationSource.None = 0 -> eQuantic.IpAtlas.LocationSource
+eQuantic.IpAtlas.LocationSource.Override = 4 -> eQuantic.IpAtlas.LocationSource
+eQuantic.IpAtlas.LocationSource.RegistryDelegation = 1 -> eQuantic.IpAtlas.LocationSource
+eQuantic.IpAtlas.NetworkTraits
+eQuantic.IpAtlas.NetworkTraits.Anonymizer = 16 -> eQuantic.IpAtlas.NetworkTraits
+eQuantic.IpAtlas.NetworkTraits.Anycast = 2 -> eQuantic.IpAtlas.NetworkTraits
+eQuantic.IpAtlas.NetworkTraits.Hosting = 1 -> eQuantic.IpAtlas.NetworkTraits
+eQuantic.IpAtlas.NetworkTraits.Mobile = 4 -> eQuantic.IpAtlas.NetworkTraits
+eQuantic.IpAtlas.NetworkTraits.None = 0 -> eQuantic.IpAtlas.NetworkTraits
+eQuantic.IpAtlas.NetworkTraits.Satellite = 8 -> eQuantic.IpAtlas.NetworkTraits
+override eQuantic.IpAtlas.AtlasSection.GetHashCode() -> int
+override eQuantic.IpAtlas.Geo.TravelAssessment.GetHashCode() -> int
+override eQuantic.IpAtlas.IpInfo.GetHashCode() -> int
+override eQuantic.IpAtlas.IpLocation.GetHashCode() -> int
+static eQuantic.IpAtlas.AtlasFormat.HeaderSize(string! source, int sectionCount) -> int
+static eQuantic.IpAtlas.AtlasFormat.PackCountry(string? countryCode) -> ushort
+static eQuantic.IpAtlas.AtlasFormat.PackTraits(eQuantic.IpAtlas.NetworkTraits flags, eQuantic.IpAtlas.LocationSource source) -> ushort
+static eQuantic.IpAtlas.AtlasFormat.UnpackCountry(ushort packed) -> string?
+static eQuantic.IpAtlas.AtlasFormat.UnpackSource(ushort packed) -> eQuantic.IpAtlas.LocationSource
+static eQuantic.IpAtlas.AtlasFormat.UnpackTraits(ushort packed) -> eQuantic.IpAtlas.NetworkTraits
+static eQuantic.IpAtlas.AtlasFormat.WriteHeader(System.IO.Stream! stream, System.DateTimeOffset builtAt, string! source, System.Collections.Generic.IReadOnlyList<eQuantic.IpAtlas.AtlasSection>! sections) -> void
+static eQuantic.IpAtlas.AtlasFormat.WriteLocationRecord(System.Span<byte> destination, float latitude, float longitude, uint regionOffset, uint cityOffset) -> void
+static eQuantic.IpAtlas.AtlasFormat.WriteV4Record(System.Span<byte> destination, uint start, uint end, ushort country, uint asn, ushort flags, uint location) -> void
+static eQuantic.IpAtlas.AtlasFormat.WriteV6Record(System.Span<byte> destination, System.UInt128 start, System.UInt128 end, ushort country, uint asn, ushort flags, uint location) -> void
+static eQuantic.IpAtlas.AtlasSection.operator !=(eQuantic.IpAtlas.AtlasSection left, eQuantic.IpAtlas.AtlasSection right) -> bool
+static eQuantic.IpAtlas.AtlasSection.operator ==(eQuantic.IpAtlas.AtlasSection left, eQuantic.IpAtlas.AtlasSection right) -> bool
+static eQuantic.IpAtlas.Crc32.Begin() -> uint
+static eQuantic.IpAtlas.Crc32.Compute(System.ReadOnlySpan<byte> data) -> uint
+static eQuantic.IpAtlas.Crc32.Finish(uint state) -> uint
+static eQuantic.IpAtlas.Crc32.Update(uint state, System.ReadOnlySpan<byte> data) -> uint
+static eQuantic.IpAtlas.Geo.CountryCentroids.Get(string? countryCode) -> (double Lat, double Lon)?
+static eQuantic.IpAtlas.Geo.CountrySpans.Get(string? countryCode) -> double
+static eQuantic.IpAtlas.Geo.TravelAssessment.operator !=(eQuantic.IpAtlas.Geo.TravelAssessment left, eQuantic.IpAtlas.Geo.TravelAssessment right) -> bool
+static eQuantic.IpAtlas.Geo.TravelAssessment.operator ==(eQuantic.IpAtlas.Geo.TravelAssessment left, eQuantic.IpAtlas.Geo.TravelAssessment right) -> bool
+static eQuantic.IpAtlas.Geo.Velocity.Assess(eQuantic.IpAtlas.IpInfo from, eQuantic.IpAtlas.IpInfo to, System.TimeSpan elapsed) -> eQuantic.IpAtlas.Geo.TravelAssessment
+static eQuantic.IpAtlas.Geo.Velocity.Assess(eQuantic.IpAtlas.IpInfo from, eQuantic.IpAtlas.IpInfo to, System.TimeSpan elapsed, double maxKilometersPerHour) -> eQuantic.IpAtlas.Geo.TravelAssessment
+static eQuantic.IpAtlas.Geo.Velocity.Assess(string? fromCountry, string? toCountry, System.TimeSpan elapsed) -> eQuantic.IpAtlas.Geo.TravelAssessment
+static eQuantic.IpAtlas.Geo.Velocity.Assess(string? fromCountry, string? toCountry, System.TimeSpan elapsed, double maxKilometersPerHour) -> eQuantic.IpAtlas.Geo.TravelAssessment
+static eQuantic.IpAtlas.Geo.Velocity.HaversineKm(double lat1, double lon1, double lat2, double lon2) -> double
+static eQuantic.IpAtlas.IpAtlasDatabase.Open(System.IO.Stream! stream) -> eQuantic.IpAtlas.IpAtlasDatabase!
+static eQuantic.IpAtlas.IpAtlasDatabase.Open(string! path) -> eQuantic.IpAtlas.IpAtlasDatabase!
+static eQuantic.IpAtlas.IpAtlasDatabase.TryOpen(string! path, out eQuantic.IpAtlas.IpAtlasDatabase? database, out string? error) -> bool
+static eQuantic.IpAtlas.IpInfo.operator !=(eQuantic.IpAtlas.IpInfo left, eQuantic.IpAtlas.IpInfo right) -> bool
+static eQuantic.IpAtlas.IpInfo.operator ==(eQuantic.IpAtlas.IpInfo left, eQuantic.IpAtlas.IpInfo right) -> bool
+static eQuantic.IpAtlas.IpLocation.operator !=(eQuantic.IpAtlas.IpLocation left, eQuantic.IpAtlas.IpLocation right) -> bool
+static eQuantic.IpAtlas.IpLocation.operator ==(eQuantic.IpAtlas.IpLocation left, eQuantic.IpAtlas.IpLocation right) -> bool
+static eQuantic.IpAtlas.IpScopes.Classify(System.Net.IPAddress! address) -> eQuantic.IpAtlas.IpScope
+static eQuantic.IpAtlas.IpScopes.ClassifyV4(uint address) -> eQuantic.IpAtlas.IpScope
+static eQuantic.IpAtlas.IpScopes.ClassifyV6(System.UInt128 address) -> eQuantic.IpAtlas.IpScope
+static readonly eQuantic.IpAtlas.Geo.TravelAssessment.Unknown -> eQuantic.IpAtlas.Geo.TravelAssessment
+static readonly eQuantic.IpAtlas.IpInfo.Unknown -> eQuantic.IpAtlas.IpInfo
+~override eQuantic.IpAtlas.AtlasSection.Equals(object obj) -> bool
+~override eQuantic.IpAtlas.AtlasSection.ToString() -> string
+~override eQuantic.IpAtlas.Geo.TravelAssessment.Equals(object obj) -> bool
+~override eQuantic.IpAtlas.Geo.TravelAssessment.ToString() -> string
+~override eQuantic.IpAtlas.IpInfo.Equals(object obj) -> bool
+~override eQuantic.IpAtlas.IpInfo.ToString() -> string
+~override eQuantic.IpAtlas.IpLocation.Equals(object obj) -> bool
+~override eQuantic.IpAtlas.IpLocation.ToString() -> string
