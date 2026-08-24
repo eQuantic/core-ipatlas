@@ -562,3 +562,86 @@ public class HarvestDeterminismTests
         runs.Distinct().Count().ShouldBe(1);
     }
 }
+
+public class HarvestSpoolTests
+{
+    private static KeyValuePair<string, GeofeedAuthorization> Feed(string url, string allowed)
+    {
+        var authorization = new GeofeedAuthorization();
+        authorization.Allow(AtlasEntry.FromPrefix(allowed)!.Value);
+        return new KeyValuePair<string, GeofeedAuthorization>(url, authorization.Compact());
+    }
+
+    [Fact]
+    public async Task A_finished_feed_is_on_disk_before_the_harvest_ends()
+    {
+        // The whole point: a harvest killed at minute twenty-nine of thirty must
+        // not lose the twenty-nine.
+        var output = Path.Combine(Path.GetTempPath(), $"spool-{Guid.NewGuid():N}.csv");
+        try
+        {
+            await using (var spool = new HarvestSpool(output))
+            {
+                await GeofeedsCommand.HarvestAsync(
+                    [Feed("https://a.test/g.csv", "45.10.0.0/16")],
+                    (_, _) => Task.FromResult<string?>("45.10.0.0/24,PT,PT-11,Lisboa,\n"),
+                    concurrency: 1,
+                    TestContext.Current.CancellationToken,
+                    spool);
+
+                File.Exists(spool.Path).ShouldBeTrue("the spool should exist while the harvest is still running");
+            }
+
+            var (done, entries) = HarvestSpool.Recover(output);
+
+            done.ShouldContain("https://a.test/g.csv");
+            entries.Count.ShouldBe(1);
+            entries[0].City.ShouldBe("Lisboa");
+        }
+        finally
+        {
+            File.Delete(output);
+            File.Delete(output + ".partial");
+        }
+    }
+
+    [Fact]
+    public async Task A_feed_cut_off_before_its_marker_is_not_trusted()
+    {
+        // A kill mid-feed leaves rows with no marker. Reading them as finished
+        // would resume from a half-written feed and silently lose the rest.
+        var output = Path.Combine(Path.GetTempPath(), $"spool-{Guid.NewGuid():N}.csv");
+        try
+        {
+            await using (var spool = new HarvestSpool(output))
+            {
+                await spool.CompleteAsync("https://done.test/g.csv",
+                    [AtlasEntry.FromPrefix("45.10.0.0/24", "PT", city: "Lisboa")!.Value],
+                    TestContext.Current.CancellationToken);
+            }
+
+            await File.AppendAllTextAsync(output + ".partial",
+                "https://cut.test/g.csv\t45.20.0.0/24\tES\t\tMadrid\n", TestContext.Current.CancellationToken);
+
+            var (done, entries) = HarvestSpool.Recover(output);
+
+            done.ShouldBe(["https://done.test/g.csv"]);
+            entries.Count.ShouldBe(1);
+            entries.ShouldNotContain(e => e.City == "Madrid");
+        }
+        finally
+        {
+            File.Delete(output + ".partial");
+        }
+    }
+
+    [Fact]
+    public void Recovering_when_there_is_no_spool_is_not_an_error()
+    {
+        var (done, entries) = HarvestSpool.Recover(
+            Path.Combine(Path.GetTempPath(), $"absent-{Guid.NewGuid():N}.csv"));
+
+        done.ShouldBeEmpty();
+        entries.ShouldBeEmpty();
+    }
+}

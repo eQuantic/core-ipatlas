@@ -128,8 +128,12 @@ public static class RdapCommand
                 {
                     answer = RdapGeofeedReader.Read(body);
                 }
-                catch (System.Text.Json.JsonException)
+                catch (Exception ex) when (ex is not OperationCanceledException)
                 {
+                    // Parsing a stranger's JSON must never take the crawl down.
+                    // Catching only JsonException was not enough: a registry
+                    // typed a field differently and the escaping exception cost
+                    // forty-six minutes of work.
                     Interlocked.Increment(ref failed);
                     return;
                 }

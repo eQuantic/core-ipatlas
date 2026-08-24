@@ -53,9 +53,14 @@ public static class RdapGeofeedReader
             foreach (var cidr in cidrs.EnumerateArray())
             {
                 var prefix = Text(cidr, "v4prefix") ?? Text(cidr, "v6prefix");
+                // TryGetInt32 is not the "try" its name promises: on an element
+                // that is not a number it throws rather than answering false.
+                // A registry that writes "length": "24" as a string used to take
+                // the whole crawl down with it.
                 if (prefix is not null
+                    && cidr.ValueKind == JsonValueKind.Object
                     && cidr.TryGetProperty("length", out var length)
-                    && length.TryGetInt32(out var bits)
+                    && Bits(length) is { } bits
                     && AtlasEntry.FromPrefix($"{prefix}/{bits}") is { } entry)
                 {
                     return entry;
@@ -69,6 +74,14 @@ public static class RdapGeofeedReader
             ? WhoisGeofeedIndex.ParseRange($"{start} - {end}")
             : null;
     }
+
+    /// <summary>A prefix length written as either a number or a string.</summary>
+    private static int? Bits(JsonElement length) => length.ValueKind switch
+    {
+        JsonValueKind.Number => length.TryGetInt32(out var number) ? number : null,
+        JsonValueKind.String => int.TryParse(length.GetString(), out var text) ? text : null,
+        _ => null,
+    };
 
     /// <summary>
     /// The handle of the organisation the network belongs to, qualified by the
@@ -163,8 +176,15 @@ public static class RdapGeofeedReader
         }
     }
 
+    /// <summary>
+    /// A string property, or null. Guards the element kind first: TryGetProperty
+    /// throws on anything that is not an object, and RDAP responses come from
+    /// five different implementations with their own ideas about types.
+    /// </summary>
     private static string? Text(JsonElement element, string property) =>
-        element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
-            ? value.GetString()
-            : null;
+        element.ValueKind == JsonValueKind.Object
+            && element.TryGetProperty(property, out var value)
+            && value.ValueKind == JsonValueKind.String
+                ? value.GetString()
+                : null;
 }

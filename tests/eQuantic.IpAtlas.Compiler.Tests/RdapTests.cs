@@ -111,3 +111,44 @@ public class RdapGeofeedReaderTests
         Should.Throw<System.Text.Json.JsonException>(() => RdapGeofeedReader.Read("<html>oops</html>"));
     }
 }
+
+public class RdapRobustnessTests
+{
+    [Fact]
+    public void A_prefix_length_written_as_a_string_is_read_not_thrown_over()
+    {
+        // A registry types this as a string. JsonElement.TryGetInt32 throws on a
+        // non-number rather than answering false, and the escaping exception
+        // killed a 122,091-query crawl at minute forty-six.
+        var answer = RdapGeofeedReader.Read("""
+        {"handle":"NET-1","cidr0_cidrs":[{"v4prefix":"45.10.0.0","length":"24"}],
+         "remarks":[{"description":["Geofeed https://example.test/geofeed.csv"]}]}
+        """);
+
+        answer.Range!.Value.ToCidr().ShouldBe("45.10.0.0/24");
+        answer.Urls.ShouldBe(["https://example.test/geofeed.csv"]);
+    }
+
+    [Theory]
+    [InlineData("""{"cidr0_cidrs":[{"v4prefix":"45.10.0.0","length":true}]}""")]
+    [InlineData("""{"cidr0_cidrs":[{"v4prefix":"45.10.0.0","length":null}]}""")]
+    [InlineData("""{"cidr0_cidrs":[{"v4prefix":"45.10.0.0","length":"not a number"}]}""")]
+    [InlineData("""{"cidr0_cidrs":"not an array"}""")]
+    [InlineData("""{"cidr0_cidrs":[42]}""")]
+    public void Any_shape_a_registry_might_send_is_survivable(string json)
+    {
+        // No assertion beyond this: it must not throw.
+        RdapGeofeedReader.Read(json);
+    }
+
+    [Fact]
+    public void Falls_back_to_the_address_bounds_when_the_cidr_list_is_unusable()
+    {
+        var answer = RdapGeofeedReader.Read("""
+        {"cidr0_cidrs":[{"v4prefix":"45.10.0.0","length":"nonsense"}],
+         "startAddress":"45.10.0.0","endAddress":"45.10.0.255"}
+        """);
+
+        answer.Range!.Value.ToCidr().ShouldBe("45.10.0.0/24");
+    }
+}

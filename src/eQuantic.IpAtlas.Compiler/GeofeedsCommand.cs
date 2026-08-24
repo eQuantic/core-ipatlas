@@ -148,13 +148,26 @@ public static class GeofeedsCommand
 
         using var fetcher = new PoliteFetcher(TimeSpan.FromSeconds(timeout), attempts, perHost, cache);
 
-        var (accepted, report) = await HarvestAsync(
-            feeds,
+        var (recoveredUrls, recovered) = HarvestSpool.Recover(outPath!);
+        if (recoveredUrls.Count > 0)
+        {
+            output.WriteLine(
+                $"  resuming: {recoveredUrls.Count:N0} feeds already read, {recovered.Count:N0} prefixes recovered");
+        }
+
+        await using var spool = new HarvestSpool(outPath!);
+        var (harvested, report) = await HarvestAsync(
+            feeds.Where(feed => !recoveredUrls.Contains(feed.Key)),
             fetcher.GetAsync,
             concurrency,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken,
+            spool).ConfigureAwait(false);
 
-        report = report with { References = referencesTotal, Feeds = planned };
+        var accepted = harvested;
+        accepted.AddRange(recovered);
+        accepted.Sort(CompareForOutput);
+
+        report = report with { References = referencesTotal, Feeds = planned, Accepted = accepted.Count };
         if (fetcher.NotModified > 0)
         {
             output.WriteLine();
@@ -162,6 +175,7 @@ public static class GeofeedsCommand
         }
 
         await WriteFeedAsync(outPath!, accepted, cancellationToken).ConfigureAwait(false);
+        spool.Discard();
         Report(output, report, outPath!);
         return accepted.Count > 0 ? 0 : 1;
     }
@@ -310,11 +324,13 @@ public static class GeofeedsCommand
     /// <param name="fetch">How to read one feed, answering null when it cannot be read.</param>
     /// <param name="concurrency">How many feeds to read at once.</param>
     /// <param name="cancellationToken">Cancels the harvest.</param>
+    /// <param name="spool">Where to record each feed as it finishes, so a killed run can resume.</param>
     public static async Task<(List<AtlasEntry> Accepted, HarvestReport Report)> HarvestAsync(
         IEnumerable<KeyValuePair<string, GeofeedAuthorization>> feeds,
         Func<string, CancellationToken, Task<string?>> fetch,
         int concurrency,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        HarvestSpool? spool = null)
     {
         ArgumentNullException.ThrowIfNull(feeds);
         ArgumentNullException.ThrowIfNull(fetch);
@@ -373,6 +389,11 @@ public static class GeofeedsCommand
                 if (rejected > 0)
                 {
                     offenders.Add((feed.Key, rejected, kept.Count));
+                }
+
+                if (spool is not null)
+                {
+                    await spool.CompleteAsync(feed.Key, kept, token).ConfigureAwait(false);
                 }
 
                 if (kept.Count > 0)
