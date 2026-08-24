@@ -106,6 +106,26 @@ public class BuildCommandTests : IDisposable
     }
 
     [Fact]
+    public void An_anonymizer_list_marks_the_addresses_it_names()
+    {
+        var target = Path_("tor.eqatlas");
+
+        Run("--rir", Fixture("delegated-sample"),
+            "--anonymizer", Fixture("tor-exits-sample.txt"),
+            "--out", target).Code.ShouldBe(0);
+
+        var db = IpAtlasDatabase.Open(target);
+        var exit = db.Lookup("193.136.128.5");
+        var neighbour = db.Lookup("193.136.128.6");
+
+        exit.IsAnonymizer.ShouldBeTrue();
+        exit.CountryCode.ShouldBe("PT");        // the registry still says where
+        exit.IsLocatablePerson.ShouldBeFalse(); // but it is not the user's location
+        neighbour.IsAnonymizer.ShouldBeFalse();
+        db.Lookup("2001:8a0::5").IsAnonymizer.ShouldBeTrue();
+    }
+
+    [Fact]
     public void Reports_the_records_it_had_to_reject()
     {
         var result = Run("--rir", Fixture("delegated-sample"), "--out", Path_("a.eqatlas"));

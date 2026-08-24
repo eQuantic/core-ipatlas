@@ -17,9 +17,15 @@ eqatlas — compiles .eqatlas IP geolocation datasets
           [--geofeed <feed.csv>...]            RFC 8805 feeds, outrank delegations
           [--cloud <ranges.json>...]           AWS / Google / Azure published ranges
           [--anycast <cidrs.txt>...]           plain CIDR lists, flagged anycast
+          [--anonymizer <ips.txt>...]          VPN, proxy and Tor exit lists
           [--override <feed.csv>...]           local corrections, outrank everything
           [--asn-heuristics]                   guess hosting from AS names (off by default)
           [--source <text>] [--built-at <date>]
+
+  geofeeds --whois <registry.db.gz>... --out <geofeeds.csv>
+          [--concurrency <n>] [--timeout <seconds>] [--attempts <n>] [--limit <n>]
+          Harvests the geofeeds operators publish about their own networks,
+          keeping only what each one is authorised to claim (RFC 9092).
 
   accuracy --dataset <dataset.eqatlas> --truth <cloud-ranges.json>...
           [--baseline <other.eqatlas>] [--min-correct <percent>]
@@ -40,6 +46,9 @@ switch (parsed.Command)
             .ConfigureAwait(false);
     case "build":
         return BuildCommand.Run(parsed, Console.Out, Console.Error);
+    case "geofeeds":
+        return await GeofeedsCommand.RunAsync(parsed, Console.Out, Console.Error, CancellationToken.None)
+            .ConfigureAwait(false);
     case "accuracy":
         return AccuracyCommand.Run(parsed, Console.Out, Console.Error);
     case "verify":

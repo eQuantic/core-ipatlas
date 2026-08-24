@@ -63,9 +63,10 @@ eqatlas fetch --into sources
 ```
 
 That pulls the five registries' delegation files, ip-to-ASN data, the AWS,
-Google Cloud and Azure range files, and Cloudflare's anycast prefixes. Azure
-publishes behind a page rather than at a fixed URL, so it is fetched
-best-effort: if discovery fails the fetch carries on and prints the manual step.
+Google Cloud and Azure range files, Cloudflare's anycast prefixes and the Tor
+Project's exit list. Azure publishes behind a page rather than at a fixed URL,
+so it is fetched best-effort: if discovery fails the fetch carries on and prints
+the manual step.
 
 Sources rank against each other rather than piling up. From lowest to highest:
 registry delegations, ASN data, operator geofeeds (RFC 8805), cloud provider
@@ -78,9 +79,42 @@ eqatlas build \
   --asn sources/ip2asn.tsv \
   --cloud sources/*-ranges.json \
   --anycast sources/cloudflare-v4.txt sources/cloudflare-v6.txt \
-  --geofeed my-networks.csv \
+  --anonymizer sources/tor-exits.txt \
+  --geofeed geofeeds.csv \
   --out world.eqatlas
 ```
+
+### Geofeeds: city-level data outside the clouds
+
+Operators publish where their own addresses are, as an RFC 8805 file pointed at
+from their registry objects. Across the RIPE, APNIC and AFRINIC database dumps
+there are 91,202 such pointers to 5,314 distinct feeds. `eqatlas geofeeds`
+harvests them:
+
+```bash
+curl -O https://ftp.ripe.net/ripe/dbase/split/ripe.db.inetnum.gz
+curl -O https://ftp.ripe.net/ripe/dbase/split/ripe.db.inet6num.gz
+curl -O https://ftp.apnic.net/apnic/whois/apnic.db.inetnum.gz
+curl -O https://ftp.afrinic.net/dbase/afrinic.db.gz
+
+eqatlas geofeeds --whois *.gz --out geofeeds.csv
+```
+
+It is a real crawl — thousands of small files on thousands of hosts — so it is a
+separate command rather than part of `fetch`, with `--concurrency`, `--timeout`,
+`--attempts` and `--limit` to bound it. Parsing the dumps alone takes about eight
+seconds and 84 MB, streaming.
+
+**Every prefix is checked against the registry objects that pointed at its
+feed.** A geofeed is a CSV on a web server, and the web server does not know
+which addresses its owner holds; without that check, publishing a file would be
+enough to relocate anyone's addresses. In a 200-feed sample, one feed alone
+claimed 86,151 prefixes it had no registry object for. Those were discarded, and
+the command names the feeds that overclaim rather than folding them into a
+total.
+
+ARIN and LACNIC do not publish bulk whois under terms this can use, so their
+geofeeds are not reachable this way. That is a real gap, not an oversight.
 
 A full world dataset is about 17 MB and takes a couple of seconds to build. The
 build writes to a temporary file and renames it into place, so rebuilding over
@@ -182,9 +216,11 @@ quoting.
 - **ASN name heuristics are off by default.** `--asn-heuristics` will guess
   hosting and mobile from AS descriptions. A name match is not evidence, so it
   is opt-in and always outranked by published ranges.
-- **This is not a VPN detection product.** `IsAnonymizer` exists in the format
-  and is set by any override or geofeed you supply, but no free source populates
-  it at scale. If you need it, that is a commercial feed today.
+- **Anonymizer coverage is Tor and whatever you supply.** The Tor Project's exit
+  list is free and authoritative, and `--anonymizer` takes any list of addresses
+  in the same shape. Commercial VPN and proxy space is not covered by any free
+  source at scale, so `IsAnonymizer` being false means "not on a list we have",
+  not "not a VPN".
 
 ## The `.eqatlas` format
 
@@ -214,6 +250,8 @@ Check the terms yourself before you ship — they are the load-bearing part of t
 | `cloud.json` | Google Cloud | region per prefix |
 | ServiceTags | Microsoft Azure | region per prefix |
 | `ips-v4` / `ips-v6` | Cloudflare | anycast prefixes |
+| `torbulkexitlist` | The Tor Project | exit nodes |
+| `*.db.*.gz` | RIPE NCC, APNIC, AFRINIC | geofeed pointers (RFC 9092) |
 | geofeeds | network operators, per RFC 8805 | country, region, city |
 
 ## Upgrading from 1.x

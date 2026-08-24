@@ -51,7 +51,8 @@ jobs:
           --asn sources/ip2asn.tsv
           --cloud sources/*-ranges.json
           --anycast sources/cloudflare-v4.txt sources/cloudflare-v6.txt
-          --out world.eqatlas --source "registries, ASNs, cloud providers"
+          --anonymizer sources/tor-exits.txt
+          --out world.eqatlas --source "registries, ASNs, cloud providers, Tor"
 
       - name: Verify both datasets load and are intact
         run: |

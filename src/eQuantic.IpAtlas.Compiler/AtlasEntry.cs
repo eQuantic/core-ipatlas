@@ -39,15 +39,32 @@ public readonly record struct AtlasEntry(
     /// <summary>Whether the entry names a place, beyond just a country.</summary>
     public bool HasPlace => Latitude is not null || Region is not null || City is not null;
 
-    /// <summary>Builds an entry from a CIDR prefix, or null when the prefix does not parse.</summary>
+    /// <summary>
+    /// Builds an entry from a CIDR prefix, or from a bare address, which is read
+    /// as a single host. Returns null when it does not parse: source files are
+    /// other people's output and a line that makes no sense is data to skip, not
+    /// an exception to throw.
+    /// </summary>
     public static AtlasEntry? FromPrefix(
         string prefix, string? countryCode = null, uint asn = 0, NetworkTraits traits = NetworkTraits.None,
         double? latitude = null, double? longitude = null, string? region = null, string? city = null)
     {
+        ArgumentNullException.ThrowIfNull(prefix);
+
         var slash = prefix.AsSpan().IndexOf('/');
-        if (slash < 0
-            || !IPAddress.TryParse(prefix.AsSpan(0, slash), out var address)
-            || !int.TryParse(prefix.AsSpan(slash + 1), out var bits))
+        IPAddress? address;
+        int bits;
+        if (slash < 0)
+        {
+            if (!IPAddress.TryParse(prefix, out address))
+            {
+                return null;
+            }
+
+            bits = address.AddressFamily == AddressFamily.InterNetworkV6 ? 128 : 32;
+        }
+        else if (!IPAddress.TryParse(prefix.AsSpan(0, slash), out address)
+            || !int.TryParse(prefix.AsSpan(slash + 1), out bits))
         {
             return null;
         }
@@ -64,6 +81,10 @@ public readonly record struct AtlasEntry(
         var start = ToNumber(address, isV6) & ~size;
         return new AtlasEntry(isV6, start, start | size, countryCode, asn, traits, latitude, longitude, region, city);
     }
+
+    /// <summary>Whether this entry's range lies wholly inside another's.</summary>
+    public bool IsInside(AtlasEntry outer) =>
+        IsV6 == outer.IsV6 && Start >= outer.Start && End <= outer.End;
 
     /// <summary>An address as the big-endian integer the dataset sorts on.</summary>
     public static UInt128 ToNumber(IPAddress address, bool isV6)

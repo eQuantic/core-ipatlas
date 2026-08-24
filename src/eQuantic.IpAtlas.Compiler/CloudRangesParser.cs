@@ -44,30 +44,6 @@ public static class CloudRangesParser
         return [];
     }
 
-    /// <summary>
-    /// Reads a plain list of CIDR prefixes, one per line — the shape Cloudflare
-    /// and several CDNs publish. These carry no region, so they contribute the
-    /// flags the caller names and nothing else.
-    /// </summary>
-    public static IEnumerable<AtlasEntry> ParseCidrList(TextReader reader, NetworkTraits flags)
-    {
-        ArgumentNullException.ThrowIfNull(reader);
-
-        while (reader.ReadLine() is { } line)
-        {
-            var text = line.Trim();
-            if (text.Length == 0 || text[0] == '#')
-            {
-                continue;
-            }
-
-            if (AtlasEntry.FromPrefix(text, traits: flags) is { } entry)
-            {
-                yield return entry;
-            }
-        }
-    }
-
     private static IEnumerable<AtlasEntry> ReadAws(JsonElement prefixes)
     {
         foreach (var element in prefixes.EnumerateArray())

@@ -44,6 +44,12 @@ public static class FetchCommand
         new("cloudflare-v4.txt", "https://www.cloudflare.com/ips-v4", "--anycast"),
         new("cloudflare-v6.txt", "https://www.cloudflare.com/ips-v6", "--anycast"),
 
+        // The one anonymizer source that is both free and authoritative: the Tor
+        // Project's own list of exit nodes. It covers Tor and nothing else, which
+        // is a small slice of the anonymizer problem, but a slice measured rather
+        // than guessed.
+        new("tor-exits.txt", "https://check.torproject.org/torbulkexitlist", "--anonymizer"),
+
         // Azure publishes the same kind of data as AWS and Google, but behind a
         // download page with a dated file name rather than at a fixed URL. It is
         // worth having: without it, Azure address space keeps answering with the
@@ -141,6 +147,7 @@ public static class FetchCommand
         output.WriteLine($"  eqatlas build --rir {directory}/delegated-* --asn {directory}/ip2asn.tsv \\");
         output.WriteLine($"    --cloud {directory}/*-ranges.json \\");
         output.WriteLine($"    --anycast {directory}/cloudflare-v4.txt {directory}/cloudflare-v6.txt \\");
+        output.WriteLine($"    --anonymizer {directory}/tor-exits.txt \\");
         output.WriteLine("    --out world.eqatlas");
         return 0;
     }

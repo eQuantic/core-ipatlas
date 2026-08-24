@@ -18,6 +18,7 @@ public static class BuildCommand
         var cloud = args.ExistingFiles("cloud");
         var anycast = args.ExistingFiles("anycast");
         var overrides = args.ExistingFiles("override");
+        var anonymizers = args.ExistingFiles("anonymizer");
         var outPath = args.One("out", required: true);
         var source = args.One("source");
         var builtAtText = args.One("built-at");
@@ -100,9 +101,17 @@ public static class BuildCommand
         foreach (var file in anycast)
         {
             using var reader = new StreamReader(file);
-            var entries = CloudRangesParser.ParseCidrList(reader, NetworkTraits.Hosting | NetworkTraits.Anycast).ToList();
+            var entries = PrefixListParser.Parse(reader, NetworkTraits.Hosting | NetworkTraits.Anycast).ToList();
             builder.AddCloud(entries);
             output.WriteLine($"  anycast   {Path.GetFileName(file),-42} {entries.Count,9:N0} ranges");
+        }
+
+        foreach (var file in anonymizers)
+        {
+            using var reader = new StreamReader(file);
+            var entries = PrefixListParser.Parse(reader, NetworkTraits.Anonymizer).ToList();
+            builder.AddCloud(entries);
+            output.WriteLine($"  anonymizer {Path.GetFileName(file),-41} {entries.Count,9:N0} ranges");
         }
 
         foreach (var file in overrides)

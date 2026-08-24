@@ -209,7 +209,7 @@ public class CloudRangesParserTests
     {
         using var reader = new StringReader("# cloudflare\n104.16.0.0/13\n2400:cb00::/32\n");
 
-        var entries = CloudRangesParser.ParseCidrList(reader, NetworkTraits.Hosting | NetworkTraits.Anycast).ToList();
+        var entries = PrefixListParser.Parse(reader, NetworkTraits.Hosting | NetworkTraits.Anycast).ToList();
 
         entries.Count.ShouldBe(2);
         entries.ShouldAllBe(entry => entry.Traits == (NetworkTraits.Hosting | NetworkTraits.Anycast));
@@ -250,9 +250,17 @@ public class PrefixTests
         entry.End.ShouldBe(UInt128.MaxValue);
     }
 
+    [Fact]
+    public void Reads_a_bare_address_as_a_single_host()
+    {
+        var entry = AtlasEntry.FromPrefix("10.0.0.1")!.Value;
+
+        entry.Start.ShouldBe((UInt128)0x0A000001);
+        entry.End.ShouldBe(entry.Start);
+    }
+
     [Theory]
     [InlineData("not a prefix")]
-    [InlineData("10.0.0.0")]
     [InlineData("10.0.0.0/33")]
     [InlineData("2001:db8::/129")]
     [InlineData("10.0.0.0/-1")]
