@@ -32,8 +32,37 @@ jobs:
         run: dotnet restore eQuantic.IpAtlas.slnx
       - name: Build
         run: dotnet build eQuantic.IpAtlas.slnx -c Release --no-restore
+      # The runtime library targets net8.0 and net10.0 and its tests run on both.
+      # A framework CI never executes is a framework CI never covers.
       - name: Test
-        run: dotnet test eQuantic.IpAtlas.slnx -c Release --no-build --logger "console;verbosity=minimal"
+        run: >
+          dotnet test eQuantic.IpAtlas.slnx -c Release --no-build
+          --logger "console;verbosity=minimal"
+          --collect:"XPlat Code Coverage"
+          --results-directory artifacts/coverage
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.os }}
+          path: artifacts/coverage/**/coverage.cobertura.xml
+          if-no-files-found: warn
+
+  aot:
+    name: Native AOT
+    needs: build-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      # The package claims AOT compatibility. This publishes a real consumer
+      # natively, where trim and AOT warnings are errors, and runs the result.
+      - name: Publish and run the AOT smoke test
+        run: |
+          dotnet publish tests/eQuantic.IpAtlas.AotSmoke -c Release -o artifacts/aot
+          ./artifacts/aot/eQuantic.IpAtlas.AotSmoke
 
   pack:
     name: Pack (smoke)

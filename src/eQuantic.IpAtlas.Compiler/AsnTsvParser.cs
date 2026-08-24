@@ -43,14 +43,14 @@ public static class AsnTsvParser
             var isV6 = startAddress.AddressFamily == AddressFamily.InterNetworkV6;
             var flags = classifyFromDescription && fields.Length > 4
                 ? AsnHeuristics.Classify(fields[4])
-                : IpFlags.None;
+                : NetworkTraits.None;
 
             yield return new AtlasEntry(
                 isV6,
                 AtlasEntry.ToNumber(startAddress, isV6),
                 AtlasEntry.ToNumber(endAddress, isV6),
                 Asn: asn,
-                Flags: flags);
+                Traits: flags);
         }
     }
 }

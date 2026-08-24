@@ -91,10 +91,10 @@ public class AsnTsvParserTests
     [Fact]
     public void Name_heuristics_are_off_unless_asked_for()
     {
-        Parse(heuristics: false).ShouldAllBe(entry => entry.Flags == IpFlags.None);
+        Parse(heuristics: false).ShouldAllBe(entry => entry.Traits == NetworkTraits.None);
 
         using var reader = new StringReader("1.0.0.0\t1.0.0.255\t64500\tUS\tEXAMPLE-HOSTING dedicated server\n");
-        AsnTsvParser.Parse(reader, classifyFromDescription: true).Single().Flags.ShouldBe(IpFlags.Hosting);
+        AsnTsvParser.Parse(reader, classifyFromDescription: true).Single().Traits.ShouldBe(NetworkTraits.Hosting);
     }
 }
 
@@ -155,7 +155,7 @@ public class CloudRangesParserTests
         frankfurt.City.ShouldBe("Frankfurt");
         frankfurt.Region.ShouldBe("eu-central-1");
         frankfurt.Latitude!.Value.ShouldBe(50.11, 0.01);
-        frankfurt.Flags.ShouldBe(IpFlags.Hosting);
+        frankfurt.Traits.ShouldBe(NetworkTraits.Hosting);
     }
 
     [Fact]
@@ -164,7 +164,7 @@ public class CloudRangesParserTests
         var belgium = Parse("gcp-sample.json").First(entry => entry.CountryCode == "BE");
 
         belgium.City.ShouldBe("Saint-Ghislain");
-        belgium.Flags.ShouldBe(IpFlags.Hosting);
+        belgium.Traits.ShouldBe(NetworkTraits.Hosting);
     }
 
     [Fact]
@@ -172,7 +172,7 @@ public class CloudRangesParserTests
     {
         var cloudfront = Parse("aws-sample.json").First(entry => entry.Start == 0x0D200000);
 
-        cloudfront.Flags.ShouldBe(IpFlags.Hosting | IpFlags.Anycast);
+        cloudfront.Traits.ShouldBe(NetworkTraits.Hosting | NetworkTraits.Anycast);
         cloudfront.CountryCode.ShouldBeNull();
         cloudfront.Latitude.ShouldBeNull();
     }
@@ -183,7 +183,7 @@ public class CloudRangesParserTests
         // A region the table has not learned yet is still a datacenter.
         var unknown = Parse("aws-sample.json").First(entry => entry.Start == 0x09090900);
 
-        unknown.Flags.ShouldBe(IpFlags.Hosting);
+        unknown.Traits.ShouldBe(NetworkTraits.Hosting);
         unknown.CountryCode.ShouldBeNull();
     }
 
@@ -209,10 +209,10 @@ public class CloudRangesParserTests
     {
         using var reader = new StringReader("# cloudflare\n104.16.0.0/13\n2400:cb00::/32\n");
 
-        var entries = CloudRangesParser.ParseCidrList(reader, IpFlags.Hosting | IpFlags.Anycast).ToList();
+        var entries = CloudRangesParser.ParseCidrList(reader, NetworkTraits.Hosting | NetworkTraits.Anycast).ToList();
 
         entries.Count.ShouldBe(2);
-        entries.ShouldAllBe(entry => entry.Flags == (IpFlags.Hosting | IpFlags.Anycast));
+        entries.ShouldAllBe(entry => entry.Traits == (NetworkTraits.Hosting | NetworkTraits.Anycast));
     }
 
     [Fact]

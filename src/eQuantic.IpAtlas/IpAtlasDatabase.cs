@@ -163,7 +163,7 @@ public sealed class IpAtlasDatabase
             var value = BinaryPrimitives.ReadUInt32BigEndian(bytes);
             var scope = IpScopes.ClassifyV4(value);
             return scope != IpScope.Public
-                ? new IpInfo(null, null, IpFlags.None, scope)
+                ? new IpInfo(null, null, NetworkTraits.None, scope)
                 : Build(FindV4(value), _v4Countries, _v4Asns, _v4Flags, _v4Locations);
         }
 
@@ -178,7 +178,7 @@ public sealed class IpAtlasDatabase
             var value = BinaryPrimitives.ReadUInt128BigEndian(bytes);
             var scope = IpScopes.ClassifyV6(value);
             return scope != IpScope.Public
-                ? new IpInfo(null, null, IpFlags.None, scope)
+                ? new IpInfo(null, null, NetworkTraits.None, scope)
                 : Build(FindV6(value), _v6Countries, _v6Asns, _v6Flags, _v6Locations);
         }
 
@@ -223,7 +223,7 @@ public sealed class IpAtlasDatabase
         return new IpInfo(
             AtlasFormat.UnpackCountry(countries[index]),
             asns[index] == 0 ? null : asns[index],
-            AtlasFormat.UnpackFlags(packed),
+            AtlasFormat.UnpackTraits(packed),
             IpScope.Public,
             location);
     }

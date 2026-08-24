@@ -14,7 +14,7 @@ namespace eQuantic.IpAtlas.Compiler;
 /// <param name="End">Last address, inclusive.</param>
 /// <param name="CountryCode">ISO 3166-1 alpha-2, when the source carried one.</param>
 /// <param name="Asn">Autonomous system number, or zero for none.</param>
-/// <param name="Flags">What kind of network the source says this is.</param>
+/// <param name="Traits">What kind of network the source says this is.</param>
 /// <param name="Latitude">Degrees north, when the source carried coordinates.</param>
 /// <param name="Longitude">Degrees east, when the source carried coordinates.</param>
 /// <param name="Region">Subdivision name or code, when the source carried one.</param>
@@ -25,7 +25,7 @@ public readonly record struct AtlasEntry(
     UInt128 End,
     string? CountryCode = null,
     uint Asn = 0,
-    IpFlags Flags = IpFlags.None,
+    NetworkTraits Traits = NetworkTraits.None,
     double? Latitude = null,
     double? Longitude = null,
     string? Region = null,
@@ -33,7 +33,7 @@ public readonly record struct AtlasEntry(
 {
     /// <summary>Whether the entry carries anything worth recording.</summary>
     public bool IsEmpty =>
-        CountryCode is null && Asn == 0 && Flags == IpFlags.None
+        CountryCode is null && Asn == 0 && Traits == NetworkTraits.None
         && Latitude is null && Region is null && City is null;
 
     /// <summary>Whether the entry names a place, beyond just a country.</summary>
@@ -41,7 +41,7 @@ public readonly record struct AtlasEntry(
 
     /// <summary>Builds an entry from a CIDR prefix, or null when the prefix does not parse.</summary>
     public static AtlasEntry? FromPrefix(
-        string prefix, string? countryCode = null, uint asn = 0, IpFlags flags = IpFlags.None,
+        string prefix, string? countryCode = null, uint asn = 0, NetworkTraits traits = NetworkTraits.None,
         double? latitude = null, double? longitude = null, string? region = null, string? city = null)
     {
         var slash = prefix.AsSpan().IndexOf('/');
@@ -62,7 +62,7 @@ public readonly record struct AtlasEntry(
         var hostBits = width - bits;
         var size = hostBits >= 128 ? UInt128.MaxValue : (UInt128.One << hostBits) - UInt128.One;
         var start = ToNumber(address, isV6) & ~size;
-        return new AtlasEntry(isV6, start, start | size, countryCode, asn, flags, latitude, longitude, region, city);
+        return new AtlasEntry(isV6, start, start | size, countryCode, asn, traits, latitude, longitude, region, city);
     }
 
     /// <summary>An address as the big-endian integer the dataset sorts on.</summary>

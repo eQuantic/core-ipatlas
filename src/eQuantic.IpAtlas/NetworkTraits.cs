@@ -6,7 +6,7 @@ namespace eQuantic.IpAtlas;
 /// sitting somewhere, and an anycast address is not anywhere in particular.
 /// </summary>
 [Flags]
-public enum IpFlags : byte
+public enum NetworkTraits : byte
 {
     /// <summary>Nothing known beyond location.</summary>
     None = 0,

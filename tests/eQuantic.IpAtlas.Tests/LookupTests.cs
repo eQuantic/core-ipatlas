@@ -10,8 +10,8 @@ public class LookupTests
         v4:
         [
             new(0x02000000, 0x020FFFFF, "FR", 3215),
-            new(0x12000000, 0x1200FFFF, "DE", 16509, IpFlags.Hosting, LocationSource.CloudProvider, 1),
-            new(0x68100000, 0x6810FFFF, null, 13335, IpFlags.Hosting | IpFlags.Anycast),
+            new(0x12000000, 0x1200FFFF, "DE", 16509, NetworkTraits.Hosting, LocationSource.CloudProvider, 1),
+            new(0x68100000, 0x6810FFFF, null, 13335, NetworkTraits.Hosting | NetworkTraits.Anycast),
             new(0xDFFFFF00, 0xDFFFFFFF, "US"),
         ],
         v6: [new(new UInt128(0x2A0104F800000000, 0), new UInt128(0x2A0104F8FFFFFFFF, ulong.MaxValue), "DE", 24940)],

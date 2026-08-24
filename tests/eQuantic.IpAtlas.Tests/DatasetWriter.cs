@@ -10,10 +10,10 @@ namespace eQuantic.IpAtlas.Tests;
 internal static class DatasetWriter
 {
     internal readonly record struct V4(uint Start, uint End, string? Country, uint Asn = 0,
-        IpFlags Flags = IpFlags.None, LocationSource Source = LocationSource.None, uint Location = 0);
+        NetworkTraits Traits = NetworkTraits.None, LocationSource Source = LocationSource.None, uint Location = 0);
 
     internal readonly record struct V6(UInt128 Start, UInt128 End, string? Country, uint Asn = 0,
-        IpFlags Flags = IpFlags.None, LocationSource Source = LocationSource.None, uint Location = 0);
+        NetworkTraits Traits = NetworkTraits.None, LocationSource Source = LocationSource.None, uint Location = 0);
 
     internal readonly record struct Place(float Latitude, float Longitude, string? Region, string? City);
 
@@ -48,7 +48,7 @@ internal static class DatasetWriter
         {
             AtlasFormat.WriteV4Record(
                 buffer, record.Start, record.End, AtlasFormat.PackCountry(record.Country),
-                record.Asn, AtlasFormat.PackFlags(record.Flags, record.Source), record.Location);
+                record.Asn, AtlasFormat.PackTraits(record.Traits, record.Source), record.Location);
             stream.Write(buffer, 0, AtlasFormat.V4RecordSize);
         }
 
@@ -56,7 +56,7 @@ internal static class DatasetWriter
         {
             AtlasFormat.WriteV6Record(
                 buffer, record.Start, record.End, AtlasFormat.PackCountry(record.Country),
-                record.Asn, AtlasFormat.PackFlags(record.Flags, record.Source), record.Location);
+                record.Asn, AtlasFormat.PackTraits(record.Traits, record.Source), record.Location);
             stream.Write(buffer, 0, AtlasFormat.V6RecordSize);
         }
 

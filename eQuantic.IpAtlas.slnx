@@ -4,11 +4,15 @@
     <File Path="global.json" />
     <File Path="LICENSE" />
   </Folder>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/eQuantic.IpAtlas.Benchmarks/eQuantic.IpAtlas.Benchmarks.csproj" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/eQuantic.IpAtlas.Compiler/eQuantic.IpAtlas.Compiler.csproj" />
     <Project Path="src/eQuantic.IpAtlas/eQuantic.IpAtlas.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/eQuantic.IpAtlas.AotSmoke/eQuantic.IpAtlas.AotSmoke.csproj" />
     <Project Path="tests/eQuantic.IpAtlas.Compiler.Tests/eQuantic.IpAtlas.Compiler.Tests.csproj" />
     <Project Path="tests/eQuantic.IpAtlas.Tests/eQuantic.IpAtlas.Tests.csproj" />
   </Folder>

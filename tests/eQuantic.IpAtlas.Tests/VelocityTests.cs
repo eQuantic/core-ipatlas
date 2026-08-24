@@ -89,9 +89,9 @@ public class VelocityTests
     [Fact]
     public void Uses_real_coordinates_when_the_dataset_has_them()
     {
-        var frankfurt = new IpInfo("DE", 16509, IpFlags.Hosting, IpScope.Public,
+        var frankfurt = new IpInfo("DE", 16509, NetworkTraits.Hosting, IpScope.Public,
             new IpLocation(50.11, 8.68, "eu-central-1", "Frankfurt", LocationSource.CloudProvider));
-        var singapore = new IpInfo("SG", 16509, IpFlags.Hosting, IpScope.Public,
+        var singapore = new IpInfo("SG", 16509, NetworkTraits.Hosting, IpScope.Public,
             new IpLocation(1.35, 103.82, "ap-southeast-1", "Singapore", LocationSource.CloudProvider));
 
         var verdict = Velocity.Assess(frankfurt, singapore, TimeSpan.FromMinutes(10));
@@ -105,9 +105,9 @@ public class VelocityTests
     public void Coordinates_separate_two_cities_inside_one_country()
     {
         // The pair a country centroid can never resolve.
-        var newYork = new IpInfo("US", 1, IpFlags.None, IpScope.Public,
+        var newYork = new IpInfo("US", 1, NetworkTraits.None, IpScope.Public,
             new IpLocation(40.71, -74.01, "US-NY", "New York", LocationSource.Geofeed));
-        var losAngeles = new IpInfo("US", 2, IpFlags.None, IpScope.Public,
+        var losAngeles = new IpInfo("US", 2, NetworkTraits.None, IpScope.Public,
             new IpLocation(34.05, -118.24, "US-CA", "Los Angeles", LocationSource.Geofeed));
 
         var verdict = Velocity.Assess(newYork, losAngeles, TimeSpan.FromMinutes(20));
@@ -121,7 +121,7 @@ public class VelocityTests
     {
         // A datacenter's location is the datacenter's. Treating it as the user's
         // is how impossible-travel checks manufacture false positives.
-        var anycast = new IpInfo("US", 13335, IpFlags.Anycast | IpFlags.Hosting);
+        var anycast = new IpInfo("US", 13335, NetworkTraits.Anycast | NetworkTraits.Hosting);
         var lisbon = new IpInfo("PT", 1930);
 
         var verdict = Velocity.Assess(anycast, lisbon, TimeSpan.FromMinutes(10));
@@ -129,14 +129,14 @@ public class VelocityTests
         verdict.Plausible.ShouldBeNull();
         verdict.Reason.ShouldBe(TravelReason.NotAPersonsLocation);
 
-        Velocity.Assess(new IpInfo("PT", 1, IpFlags.Anonymizer), lisbon, TimeSpan.FromHours(1))
+        Velocity.Assess(new IpInfo("PT", 1, NetworkTraits.Anonymizer), lisbon, TimeSpan.FromHours(1))
             .Reason.ShouldBe(TravelReason.NotAPersonsLocation);
     }
 
     [Fact]
     public void Refuses_to_judge_a_private_address()
     {
-        var internalAddress = new IpInfo(null, null, IpFlags.None, IpScope.Private);
+        var internalAddress = new IpInfo(null, null, NetworkTraits.None, IpScope.Private);
 
         Velocity.Assess(internalAddress, new IpInfo("PT", 1930), TimeSpan.FromHours(1))
             .Reason.ShouldBe(TravelReason.NotLocated);

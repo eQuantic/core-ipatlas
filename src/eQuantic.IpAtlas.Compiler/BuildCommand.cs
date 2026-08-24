@@ -100,7 +100,7 @@ public static class BuildCommand
         foreach (var file in anycast)
         {
             using var reader = new StreamReader(file);
-            var entries = CloudRangesParser.ParseCidrList(reader, IpFlags.Hosting | IpFlags.Anycast).ToList();
+            var entries = CloudRangesParser.ParseCidrList(reader, NetworkTraits.Hosting | NetworkTraits.Anycast).ToList();
             builder.AddCloud(entries);
             output.WriteLine($"  anycast   {Path.GetFileName(file),-42} {entries.Count,9:N0} ranges");
         }

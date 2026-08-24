@@ -30,28 +30,28 @@ public static class AsnHeuristics
     ];
 
     /// <summary>What an AS description suggests about the network, or none when nothing matches.</summary>
-    public static IpFlags Classify(string? description)
+    public static NetworkTraits Classify(string? description)
     {
         if (string.IsNullOrWhiteSpace(description))
         {
-            return IpFlags.None;
+            return NetworkTraits.None;
         }
 
         var text = description.ToLowerInvariant();
-        var flags = IpFlags.None;
+        var flags = NetworkTraits.None;
         if (ContainsAny(text, HostingTokens))
         {
-            flags |= IpFlags.Hosting;
+            flags |= NetworkTraits.Hosting;
         }
 
         if (ContainsAny(text, MobileTokens))
         {
-            flags |= IpFlags.Mobile;
+            flags |= NetworkTraits.Mobile;
         }
 
         if (ContainsAny(text, SatelliteTokens))
         {
-            flags |= IpFlags.Satellite;
+            flags |= NetworkTraits.Satellite;
         }
 
         return flags;

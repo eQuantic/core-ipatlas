@@ -49,7 +49,7 @@ public static class CloudRangesParser
     /// and several CDNs publish. These carry no region, so they contribute the
     /// flags the caller names and nothing else.
     /// </summary>
-    public static IEnumerable<AtlasEntry> ParseCidrList(TextReader reader, IpFlags flags)
+    public static IEnumerable<AtlasEntry> ParseCidrList(TextReader reader, NetworkTraits flags)
     {
         ArgumentNullException.ThrowIfNull(reader);
 
@@ -61,7 +61,7 @@ public static class CloudRangesParser
                 continue;
             }
 
-            if (AtlasEntry.FromPrefix(text, flags: flags) is { } entry)
+            if (AtlasEntry.FromPrefix(text, traits: flags) is { } entry)
             {
                 yield return entry;
             }
@@ -129,14 +129,14 @@ public static class CloudRangesParser
             || region.Equals("GLOBAL", StringComparison.OrdinalIgnoreCase)
             || region.Equals("global", StringComparison.Ordinal);
 
-        var flags = isGlobal ? IpFlags.Hosting | IpFlags.Anycast : IpFlags.Hosting;
+        var flags = isGlobal ? NetworkTraits.Hosting | NetworkTraits.Anycast : NetworkTraits.Hosting;
         if (CloudRegions.Get(region) is not { } place)
         {
-            return AtlasEntry.FromPrefix(prefix, flags: flags);
+            return AtlasEntry.FromPrefix(prefix, traits: flags);
         }
 
         return AtlasEntry.FromPrefix(
-            prefix, place.CountryCode, flags: flags,
+            prefix, place.CountryCode, traits: flags,
             latitude: place.Latitude, longitude: place.Longitude, region: region, city: place.City);
     }
 

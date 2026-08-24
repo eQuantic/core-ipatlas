@@ -27,7 +27,7 @@ public class BuilderPrecedenceTests
         var db = Build(builder => builder
             .AddRegistry([AtlasEntry.FromPrefix("18.184.0.0/15", "US")!.Value])
             .AddCloud([AtlasEntry.FromPrefix(
-                "18.184.0.0/15", "DE", flags: IpFlags.Hosting,
+                "18.184.0.0/15", "DE", traits: NetworkTraits.Hosting,
                 latitude: 50.11, longitude: 8.68, region: "eu-central-1", city: "Frankfurt")!.Value]));
 
         var info = db.Lookup("18.184.0.1");
@@ -86,12 +86,12 @@ public class BuilderPrecedenceTests
         // "Datacenter" and "anycast" are true whoever noticed them.
         var db = Build(builder => builder
             .AddRegistry([AtlasEntry.FromPrefix("45.10.0.0/24", "US")!.Value])
-            .AddAsns([AtlasEntry.FromPrefix("45.10.0.0/24", asn: 64500, flags: IpFlags.Mobile)!.Value])
-            .AddCloud([AtlasEntry.FromPrefix("45.10.0.0/24", flags: IpFlags.Hosting | IpFlags.Anycast)!.Value]));
+            .AddAsns([AtlasEntry.FromPrefix("45.10.0.0/24", asn: 64500, traits: NetworkTraits.Mobile)!.Value])
+            .AddCloud([AtlasEntry.FromPrefix("45.10.0.0/24", traits: NetworkTraits.Hosting | NetworkTraits.Anycast)!.Value]));
 
         var info = db.Lookup("45.10.0.1");
 
-        info.Flags.ShouldBe(IpFlags.Hosting | IpFlags.Anycast | IpFlags.Mobile);
+        info.Traits.ShouldBe(NetworkTraits.Hosting | NetworkTraits.Anycast | NetworkTraits.Mobile);
         info.Asn.ShouldBe(64500u);
         info.CountryCode.ShouldBe("US");
     }
@@ -104,7 +104,7 @@ public class BuilderPrecedenceTests
         var db = Build(builder => builder
             .AddRegistry([AtlasEntry.FromPrefix("104.16.0.0/13", "US")!.Value])
             .AddCloud([AtlasEntry.FromPrefix(
-                "104.16.0.0/13", flags: IpFlags.Hosting | IpFlags.Anycast)!.Value]));
+                "104.16.0.0/13", traits: NetworkTraits.Hosting | NetworkTraits.Anycast)!.Value]));
 
         var info = db.Lookup("104.16.0.1");
 
@@ -222,5 +222,101 @@ public class BuilderPrecedenceTests
         db.V4RangeCount.ShouldBe(2);
         db.Lookup("223.255.255.1").CountryCode.ShouldBe("PT");
         db.Lookup("45.10.0.1").CountryCode.ShouldBe("DE");
+    }
+}
+
+/// <summary>
+/// Overlaps inside a single source, which is where the published cloud files
+/// spend most of their complexity.
+/// </summary>
+public class OverlapResolutionTests
+{
+    private static IpAtlasDatabase Build(Action<DatasetBuilder> configure)
+    {
+        var builder = new DatasetBuilder();
+        configure(builder);
+        var stream = new MemoryStream();
+        builder.Write(stream, "test", DateTimeOffset.UnixEpoch);
+        stream.Position = 0;
+        return IpAtlasDatabase.Open(stream);
+    }
+
+    [Fact]
+    public void A_specific_prefix_wins_over_the_wider_one_containing_it()
+    {
+        var db = Build(builder => builder.AddCloud(
+        [
+            AtlasEntry.FromPrefix("45.0.0.0/12", "US", city: "Ashburn")!.Value,
+            AtlasEntry.FromPrefix("45.10.0.0/24", "DE", city: "Frankfurt")!.Value,
+        ]));
+
+        db.Lookup("45.10.0.1").CountryCode.ShouldBe("DE");
+        db.Lookup("45.10.0.1").Location!.Value.City.ShouldBe("Frankfurt");
+        db.Lookup("45.9.0.1").CountryCode.ShouldBe("US");
+        db.Lookup("45.11.0.1").CountryCode.ShouldBe("US");
+    }
+
+    [Fact]
+    public void A_wider_prefix_that_names_a_place_survives_a_narrow_one_that_does_not()
+    {
+        // Azure publishes narrow prefixes for regions a build may not know, and
+        // AWS marks blocks GLOBAL inside located ones. Letting the narrower
+        // prefix win outright replaced a known country with nothing.
+        var db = Build(builder => builder.AddCloud(
+        [
+            AtlasEntry.FromPrefix("45.0.0.0/12", "DE", traits: NetworkTraits.Hosting, city: "Frankfurt")!.Value,
+            AtlasEntry.FromPrefix("45.10.0.0/24", traits: NetworkTraits.Hosting | NetworkTraits.Anycast)!.Value,
+        ]));
+
+        var info = db.Lookup("45.10.0.1");
+
+        info.CountryCode.ShouldBe("DE");
+        info.Location!.Value.City.ShouldBe("Frankfurt");
+        info.Traits.ShouldBe(NetworkTraits.Hosting | NetworkTraits.Anycast);
+    }
+
+    [Fact]
+    public void Each_field_comes_from_the_most_specific_source_that_states_it()
+    {
+        var db = Build(builder => builder.AddCloud(
+        [
+            AtlasEntry.FromPrefix("45.0.0.0/12", "US", latitude: 39.04, longitude: -77.49, city: "Ashburn")!.Value,
+            AtlasEntry.FromPrefix("45.10.0.0/16", "DE")!.Value,
+            AtlasEntry.FromPrefix("45.10.0.0/24", traits: NetworkTraits.Anycast)!.Value,
+        ]));
+
+        var info = db.Lookup("45.10.0.1");
+
+        info.CountryCode.ShouldBe("DE");              // from the /16
+        info.Location!.Value.City.ShouldBe("Ashburn"); // only the /12 named one
+        info.IsAnycast.ShouldBeTrue();                 // from the /24
+    }
+
+    [Fact]
+    public void Traits_from_every_overlapping_prefix_are_kept()
+    {
+        var db = Build(builder => builder.AddCloud(
+        [
+            AtlasEntry.FromPrefix("45.0.0.0/12", traits: NetworkTraits.Hosting)!.Value,
+            AtlasEntry.FromPrefix("45.10.0.0/16", traits: NetworkTraits.Mobile)!.Value,
+            AtlasEntry.FromPrefix("45.10.0.0/24", "PT", traits: NetworkTraits.Anycast)!.Value,
+        ]));
+
+        db.Lookup("45.10.0.1").Traits
+            .ShouldBe(NetworkTraits.Hosting | NetworkTraits.Mobile | NetworkTraits.Anycast);
+    }
+
+    [Fact]
+    public void Identical_duplicate_prefixes_collapse_to_one_range()
+    {
+        // AWS lists the same prefix once per service it powers.
+        var db = Build(builder => builder.AddCloud(
+        [
+            AtlasEntry.FromPrefix("45.10.0.0/24", "DE", traits: NetworkTraits.Hosting)!.Value,
+            AtlasEntry.FromPrefix("45.10.0.0/24", "DE", traits: NetworkTraits.Hosting)!.Value,
+            AtlasEntry.FromPrefix("45.10.0.0/24", "DE", traits: NetworkTraits.Hosting)!.Value,
+        ]));
+
+        db.V4RangeCount.ShouldBe(1);
     }
 }

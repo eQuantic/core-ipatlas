@@ -92,7 +92,7 @@ public sealed class DatasetBuilder
             AtlasFormat.WriteV4Record(
                 v4Bytes.AsSpan(i * AtlasFormat.V4RecordSize),
                 (uint)segment.Start, (uint)segment.End,
-                segment.Country, segment.Asn, segment.Flags, segment.Location);
+                segment.Country, segment.Asn, segment.Traits, segment.Location);
         }
 
         Emit(output, ref state, v4Bytes);
@@ -104,7 +104,7 @@ public sealed class DatasetBuilder
             AtlasFormat.WriteV6Record(
                 v6Bytes.AsSpan(i * AtlasFormat.V6RecordSize),
                 segment.Start, segment.End,
-                segment.Country, segment.Asn, segment.Flags, segment.Location);
+                segment.Country, segment.Asn, segment.Traits, segment.Location);
         }
 
         Emit(output, ref state, v6Bytes);
@@ -131,7 +131,7 @@ public sealed class DatasetBuilder
         var count = 0;
         foreach (var segment in v4)
         {
-            if ((segment.Flags & 0xFF00) == wanted && segment.Country != 0)
+            if ((segment.Traits & 0xFF00) == wanted && segment.Country != 0)
             {
                 count++;
             }
@@ -139,7 +139,7 @@ public sealed class DatasetBuilder
 
         foreach (var segment in v6)
         {
-            if ((segment.Flags & 0xFF00) == wanted && segment.Country != 0)
+            if ((segment.Traits & 0xFF00) == wanted && segment.Country != 0)
             {
                 count++;
             }
@@ -173,7 +173,7 @@ public sealed class DatasetBuilder
         return sections;
     }
 
-    private readonly record struct Segment(UInt128 Start, UInt128 End, ushort Country, uint Asn, ushort Flags, uint Location);
+    private readonly record struct Segment(UInt128 Start, UInt128 End, ushort Country, uint Asn, ushort Traits, uint Location);
 
     private sealed record Normalized(int Precedence, LocationSource Source, List<AtlasEntry> Entries)
     {
@@ -229,7 +229,7 @@ public sealed class DatasetBuilder
                 && last.End + UInt128.One == start
                 && last.Country == value.Country
                 && last.Asn == value.Asn
-                && last.Flags == value.Flags
+                && last.Traits == value.Traits
                 && last.Location == value.Location)
             {
                 result[^1] = last with { End = end };
@@ -249,7 +249,7 @@ public sealed class DatasetBuilder
     {
         string? country = null;
         uint asn = 0;
-        var flags = IpFlags.None;
+        var flags = NetworkTraits.None;
         double? latitude = null;
         double? longitude = null;
         string? region = null;
@@ -263,7 +263,7 @@ public sealed class DatasetBuilder
                 continue;
             }
 
-            flags |= entry.Flags;
+            flags |= entry.Traits;
 
             if (asn == 0)
             {
@@ -291,12 +291,12 @@ public sealed class DatasetBuilder
             ? places.Intern(latitude, longitude, region, city)
             : 0u;
 
-        if (packedCountry == 0 && asn == 0 && flags == IpFlags.None && location == 0)
+        if (packedCountry == 0 && asn == 0 && flags == NetworkTraits.None && location == 0)
         {
             return null;
         }
 
-        return new Segment(start, end, packedCountry, asn, AtlasFormat.PackFlags(flags, locationSource), location);
+        return new Segment(start, end, packedCountry, asn, AtlasFormat.PackTraits(flags, locationSource), location);
     }
 
     private static List<UInt128> CutPoints(List<Normalized> layers)
@@ -325,14 +325,20 @@ public sealed class DatasetBuilder
     }
 
     /// <summary>
-    /// Sorted, non-overlapping copy of one layer, resolving overlaps the way
-    /// routing does: the most specific prefix wins.
+    /// Sorted, non-overlapping copy of one layer, resolving overlaps field by
+    /// field: each answer comes from the most specific prefix that actually
+    /// makes that claim.
     /// <para>
-    /// This matters more than it sounds. AWS publishes a /24 in Frankfurt and a
-    /// /12 marked GLOBAL that contains it. Resolving by whichever started first
-    /// let the /12 swallow the /24, and several hundred regional blocks fell
-    /// back to the registry's answer of "United States". A smaller prefix is a
-    /// more specific claim about a smaller piece of the internet, and it wins.
+    /// Taking the whole payload from the most specific prefix is not enough, and
+    /// the cloud files show why in both directions. AWS publishes a /24 in
+    /// Frankfurt inside a /12 marked GLOBAL — let the /12 win and the region is
+    /// lost. Azure publishes a narrow prefix for a region this build has never
+    /// heard of, sitting inside a wider one it has — let the narrow one win and
+    /// a known country is replaced by nothing. Neither prefix is wrong; each is
+    /// specific about a different thing. So the country comes from the smallest
+    /// prefix that names a country, the coordinates from the smallest that has
+    /// coordinates, and the traits from all of them at once, because
+    /// "datacenter" does not stop being true at a prefix boundary.
     /// </para>
     /// </summary>
     private static List<AtlasEntry> Normalize(IEnumerable<AtlasEntry> entries)
@@ -360,9 +366,7 @@ public sealed class DatasetBuilder
 
         Dedupe(points);
 
-        // Smallest covering range first, with a stable tie-break so two builds
-        // from the same inputs produce the same bytes.
-        var active = new PriorityQueue<AtlasEntry, (UInt128 Size, UInt128 Start, int Order)>();
+        var active = new List<AtlasEntry>();
         var result = new List<AtlasEntry>();
         var next = 0;
 
@@ -371,44 +375,105 @@ public sealed class DatasetBuilder
             var start = points[i];
             while (next < sorted.Count && sorted[next].Start <= start)
             {
-                var entry = sorted[next];
-                active.Enqueue(entry, (entry.End - entry.Start, entry.Start, next));
+                active.Add(sorted[next]);
                 next++;
             }
 
-            while (active.Count > 0 && active.Peek().End < start)
-            {
-                active.Dequeue();
-            }
-
-            if (active.Count == 0)
+            var merged = Coalesce(active, start);
+            if (merged is not { } value)
             {
                 continue;
             }
 
             var end = i + 1 < points.Count ? points[i + 1] - UInt128.One : UInt128.MaxValue;
-            var winner = active.Peek() with { Start = start, End = end };
+            value = value with { Start = start, End = end };
 
-            if (result.Count > 0
-                && result[^1].End + UInt128.One == start
-                && Same(result[^1], winner))
+            if (result.Count > 0 && result[^1].End + UInt128.One == start && Same(result[^1], value))
             {
                 result[^1] = result[^1] with { End = end };
             }
             else
             {
-                result.Add(winner);
+                result.Add(value);
             }
         }
 
         return result;
     }
 
+    /// <summary>
+    /// Drops the entries that no longer cover the point and folds the rest into
+    /// one, preferring the smallest prefix that has something to say per field.
+    /// </summary>
+    private static AtlasEntry? Coalesce(List<AtlasEntry> active, UInt128 point)
+    {
+        var traits = NetworkTraits.None;
+        string? country = null;
+        string? region = null;
+        string? city = null;
+        double? latitude = null;
+        double? longitude = null;
+        uint asn = 0;
+        var countryWidth = UInt128.MaxValue;
+        var regionWidth = UInt128.MaxValue;
+        var cityWidth = UInt128.MaxValue;
+        var pointWidth = UInt128.MaxValue;
+        var asnWidth = UInt128.MaxValue;
+        var isV6 = false;
+        var any = false;
+
+        var keep = 0;
+        for (var i = 0; i < active.Count; i++)
+        {
+            var entry = active[i];
+            if (entry.End < point)
+            {
+                continue;
+            }
+
+            active[keep++] = entry;
+            any = true;
+            isV6 = entry.IsV6;
+            traits |= entry.Traits;
+
+            var width = entry.End - entry.Start;
+            if (entry.CountryCode is not null && width < countryWidth)
+            {
+                (country, countryWidth) = (entry.CountryCode, width);
+            }
+
+            if (entry.Region is not null && width < regionWidth)
+            {
+                (region, regionWidth) = (entry.Region, width);
+            }
+
+            if (entry.City is not null && width < cityWidth)
+            {
+                (city, cityWidth) = (entry.City, width);
+            }
+
+            if (entry.Latitude is not null && width < pointWidth)
+            {
+                (latitude, longitude, pointWidth) = (entry.Latitude, entry.Longitude, width);
+            }
+
+            if (entry.Asn != 0 && width < asnWidth)
+            {
+                (asn, asnWidth) = (entry.Asn, width);
+            }
+        }
+
+        active.RemoveRange(keep, active.Count - keep);
+        return any
+            ? new AtlasEntry(isV6, point, point, country, asn, traits, latitude, longitude, region, city)
+            : null;
+    }
+
     /// <summary>Whether two entries carry the same payload, so they can be merged.</summary>
     private static bool Same(AtlasEntry left, AtlasEntry right) =>
         left.CountryCode == right.CountryCode
         && left.Asn == right.Asn
-        && left.Flags == right.Flags
+        && left.Traits == right.Traits
         && left.Latitude.Equals(right.Latitude)
         && left.Longitude.Equals(right.Longitude)
         && left.Region == right.Region

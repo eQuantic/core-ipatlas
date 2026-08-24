@@ -182,11 +182,11 @@ public static class AtlasFormat
     /// Packs the feature flags and the location's provenance into the one ushort
     /// the range record carries: flags in the low byte, source in the high byte.
     /// </summary>
-    public static ushort PackFlags(IpFlags flags, LocationSource source) =>
+    public static ushort PackTraits(NetworkTraits flags, LocationSource source) =>
         (ushort)(((byte)source << 8) | (byte)flags);
 
     /// <summary>The feature flags out of a packed range-record field.</summary>
-    public static IpFlags UnpackFlags(ushort packed) => (IpFlags)(byte)(packed & 0xFF);
+    public static NetworkTraits UnpackTraits(ushort packed) => (NetworkTraits)(byte)(packed & 0xFF);
 
     /// <summary>The location provenance out of a packed range-record field.</summary>
     public static LocationSource UnpackSource(ushort packed) => (LocationSource)(byte)(packed >> 8);
