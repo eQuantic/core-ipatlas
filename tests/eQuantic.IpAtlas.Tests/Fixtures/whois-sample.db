@@ -1,0 +1,34 @@
+% This is the RIPE Database query service.
+
+inetnum:        45.10.0.0 - 45.10.0.255
+netname:        EXAMPLE-NET
+country:        PT
+geofeed:        https://example.test/geofeed.csv
+source:         RIPE
+
+inetnum:        45.10.1.0 - 45.10.1.255
+netname:        EXAMPLE-NET-2
+remarks:        Geofeed https://example.test/geofeed.csv
+source:         RIPE
+
+inetnum:        45.20.0.0 - 45.20.255.255
+netname:        OTHER-NET
+remarks:        nothing to see here
+source:         RIPE
+
+inet6num:       2a01:4f8::/32
+netname:        EXAMPLE-V6
+geofeed:        https://example.test/v6.csv
+descr:          continuation lines are ignored
+                like this one
+source:         RIPE
+
+inetnum:        45.30.0.0/22
+netname:        CIDR-FORM
+geofeed:        ftp://example.test/not-http.csv
+source:         RIPE
+
+inetnum:        45.40.0.0 - 45.40.0.255
+netname:        TRAILING
+geofeed:        https://example.test/trailing.csv.
+source:         RIPE

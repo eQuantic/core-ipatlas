@@ -1,23 +1,32 @@
-using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
 
 namespace eQuantic.IpAtlas.Compiler;
-
-/// <summary>One routed range and the autonomous system announcing it.</summary>
-public readonly record struct AsnRange(bool IsV6, UInt128 Start, UInt128 End, uint Asn);
 
 /// <summary>
 /// Parses ip-to-ASN TSV data (the iptoasn.com combined layout):
 /// <c>range_start\trange_end\tAS_number\tcountry\tAS_description</c>.
 /// ASN 0 ("not routed") is skipped. Optional input — a dataset built without
 /// it simply answers null for ASN.
+/// <para>
+/// The country column is deliberately ignored: it is itself derived from
+/// registry delegations, so trusting it would launder the same error through a
+/// second source and make the dataset look corroborated when it is not.
+/// </para>
 /// </summary>
 public static class AsnTsvParser
 {
     /// <summary>Yields the routed ranges the TSV describes.</summary>
-    public static IEnumerable<AsnRange> Parse(TextReader reader)
+    /// <param name="reader">The TSV to read.</param>
+    /// <param name="classifyFromDescription">
+    /// Whether to guess hosting, mobile and satellite flags from the AS name.
+    /// Off by default: see <see cref="AsnHeuristics"/> for why a name match is
+    /// not treated as evidence unless a build explicitly asks for it.
+    /// </param>
+    public static IEnumerable<AtlasEntry> Parse(TextReader reader, bool classifyFromDescription = false)
     {
+        ArgumentNullException.ThrowIfNull(reader);
+
         while (reader.ReadLine() is { } line)
         {
             var fields = line.Split('\t');
@@ -32,16 +41,16 @@ public static class AsnTsvParser
             }
 
             var isV6 = startAddress.AddressFamily == AddressFamily.InterNetworkV6;
-            yield return new AsnRange(isV6, ToNumber(startAddress, isV6), ToNumber(endAddress, isV6), asn);
-        }
-    }
+            var flags = classifyFromDescription && fields.Length > 4
+                ? AsnHeuristics.Classify(fields[4])
+                : NetworkTraits.None;
 
-    private static UInt128 ToNumber(IPAddress address, bool isV6)
-    {
-        Span<byte> bytes = stackalloc byte[16];
-        address.TryWriteBytes(bytes, out var written);
-        return isV6
-            ? BinaryPrimitives.ReadUInt128BigEndian(bytes)
-            : BinaryPrimitives.ReadUInt32BigEndian(bytes[..written]);
+            yield return new AtlasEntry(
+                isV6,
+                AtlasEntry.ToNumber(startAddress, isV6),
+                AtlasEntry.ToNumber(endAddress, isV6),
+                Asn: asn,
+                Traits: flags);
+        }
     }
 }

@@ -6,6 +6,12 @@ namespace eQuantic.IpAtlas.Geo;
 /// assessments at airliner granularity, not maps. Countries the table does
 /// not know resolve to null and assessments answer "unknown" rather than
 /// guessing.
+/// <para>
+/// Two codes are absent on purpose. "EU" and "AP" appear in registry data for
+/// allocations spanning a whole region, and inventing a point for them would
+/// turn "somewhere across a continent" into a specific place a distance could
+/// be measured from. They stay unknown, which is what they are.
+/// </para>
 /// </summary>
 public static class CountryCentroids
 {
@@ -67,5 +73,24 @@ public static class CountryCentroids
         ["UZ"] = (41.0, 64.0), ["VA"] = (41.9, 12.45), ["VC"] = (13.25, -61.2), ["VE"] = (8.0, -66.0),
         ["VN"] = (16.0, 106.0), ["VU"] = (-16.0, 167.0), ["WS"] = (-13.58, -172.33), ["YE"] = (15.0, 48.0),
         ["ZA"] = (-29.0, 24.0), ["ZM"] = (-15.0, 30.0), ["ZW"] = (-20.0, 30.0),
+
+        // Territories, dependencies and the codes the registries actually emit.
+        // These were missing, and they are where the gap hurt most: an answer of
+        // "unknown" for Reunion or the Cayman Islands is not a rounding error in
+        // a risk product, it is the signal going quiet exactly over the offshore
+        // jurisdictions it exists to notice.
+        ["AI"] = (18.22, -63.07), ["AQ"] = (-75.0, 0.0), ["AS"] = (-14.3, -170.7), ["AW"] = (12.52, -69.97),
+        ["AX"] = (60.2, 20.0), ["BL"] = (17.9, -62.83), ["BM"] = (32.32, -64.75), ["BQ"] = (12.18, -68.25),
+        ["BV"] = (-54.42, 3.36), ["CC"] = (-12.17, 96.83), ["CK"] = (-21.23, -159.78), ["CW"] = (12.17, -69.0),
+        ["CX"] = (-10.49, 105.62), ["EH"] = (24.5, -13.0), ["FK"] = (-51.75, -59.0), ["FO"] = (62.0, -7.0),
+        ["GF"] = (4.0, -53.0), ["GG"] = (49.47, -2.58), ["GI"] = (36.13, -5.35), ["GL"] = (72.0, -40.0),
+        ["GP"] = (16.25, -61.58), ["GS"] = (-54.5, -37.0), ["GU"] = (13.44, 144.79), ["HM"] = (-53.08, 73.5),
+        ["IM"] = (54.23, -4.55), ["IO"] = (-7.3, 72.4), ["JE"] = (49.21, -2.13), ["KY"] = (19.31, -81.25),
+        ["MF"] = (18.08, -63.05), ["MP"] = (15.2, 145.75), ["MQ"] = (14.64, -61.02), ["MS"] = (16.75, -62.2),
+        ["NC"] = (-21.5, 165.5), ["NF"] = (-29.03, 167.95), ["NU"] = (-19.05, -169.87), ["PF"] = (-17.68, -149.41),
+        ["PM"] = (46.83, -56.33), ["RE"] = (-21.11, 55.53), ["SH"] = (-15.96, -5.71), ["SJ"] = (78.0, 20.0),
+        ["SX"] = (18.03, -63.05), ["TC"] = (21.75, -71.58), ["TF"] = (-49.28, 69.35), ["TK"] = (-9.2, -171.85),
+        ["UM"] = (19.3, 166.6), ["VG"] = (18.42, -64.62), ["VI"] = (18.34, -64.9), ["WF"] = (-13.3, -176.2),
+        ["XK"] = (42.6, 20.9),
     };
 }

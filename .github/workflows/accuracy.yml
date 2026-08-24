@@ -1,0 +1,116 @@
+name: Accuracy
+
+# The dataset pipeline depends on files five registries and several cloud
+# providers publish, and none of them owe us a stable format. This builds a real
+# world dataset from the live sources every week and measures it, so a source
+# that changes shape shows up here rather than in someone's fraud dashboard. The
+# published numbers in the README come from this job.
+on:
+  schedule:
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+    inputs:
+      min-correct:
+        description: 'Fail below this percentage correct'
+        default: '95'
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    name: Build from live sources and score
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build the compiler
+        run: dotnet publish src/eQuantic.IpAtlas.Compiler -c Release -o artifacts/eqatlas
+
+      - name: Fetch every public source
+        run: ./artifacts/eqatlas/eQuantic.IpAtlas.Compiler fetch --into sources
+
+      # Two datasets from the same inputs: one with only registry delegations,
+      # which is all a registry-derived library can do, and one with every layer.
+      # The gap between them is the number worth reporting.
+      - name: Build the registry-only baseline
+        run: >
+          ./artifacts/eqatlas/eQuantic.IpAtlas.Compiler build
+          --rir sources/delegated-*
+          --asn sources/ip2asn.tsv
+          --out baseline.eqatlas --source "registry delegations only"
+
+      - name: Build the layered dataset
+        run: >
+          ./artifacts/eqatlas/eQuantic.IpAtlas.Compiler build
+          --rir sources/delegated-*
+          --asn sources/ip2asn.tsv
+          --cloud sources/*-ranges.json
+          --anycast sources/cloudflare-v4.txt sources/cloudflare-v6.txt
+          --anonymizer sources/tor-exits.txt
+          --out world.eqatlas --source "registries, ASNs, cloud providers, Tor"
+
+      - name: Verify both datasets load and are intact
+        run: |
+          ./artifacts/eqatlas/eQuantic.IpAtlas.Compiler verify --dataset world.eqatlas --max-age-days 1
+          ./artifacts/eqatlas/eQuantic.IpAtlas.Compiler verify --dataset baseline.eqatlas
+
+      - name: Score
+        run: |
+          {
+            echo '## Accuracy against published cloud regions'
+            echo
+            ./artifacts/eqatlas/eQuantic.IpAtlas.Compiler accuracy \
+              --dataset world.eqatlas --baseline baseline.eqatlas \
+              --truth sources/*-ranges.json \
+              --min-correct "${{ inputs.min-correct || '95' }}"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: datasets
+          path: '*.eqatlas'
+          retention-days: 7
+
+  geofeeds:
+    name: Geofeed harvest (sampled)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build the compiler
+        run: dotnet publish src/eQuantic.IpAtlas.Compiler -c Release -o artifacts/eqatlas
+
+      - name: Fetch the registry database dumps
+        run: ./artifacts/eqatlas/eQuantic.IpAtlas.Compiler fetch --into sources --with-whois
+
+      # The dumps are a few hundred megabytes and the full crawl reaches thousands
+      # of hosts, so CI samples. The point is not to produce a dataset: it is to
+      # notice when a registry changes the shape of its dump or the geofeed
+      # convention moves, and a sample catches that just as well.
+      - name: Harvest a sample
+        run: |
+          {
+            echo '## Geofeed harvest (sampled)'
+            echo
+            echo '```'
+            ./artifacts/eqatlas/eQuantic.IpAtlas.Compiler geofeeds \
+              --whois sources/*.db*.gz --out geofeeds.csv --limit 200
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: geofeeds
+          path: geofeeds.csv
+          retention-days: 7

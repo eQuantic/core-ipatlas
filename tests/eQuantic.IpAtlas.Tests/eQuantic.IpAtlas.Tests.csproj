@@ -1,9 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
     <IsPackable>false</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
-    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <!-- Test names read as sentences, and xunit facts cannot be static. -->
+    <NoWarn>$(NoWarn);CS1591;CA1707;CA1822;CA1861;CA5394</NoWarn>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
@@ -14,7 +15,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\eQuantic.IpAtlas\eQuantic.IpAtlas.csproj" />
-    <ProjectReference Include="..\..\src\eQuantic.IpAtlas.Compiler\eQuantic.IpAtlas.Compiler.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="Fixtures/**" CopyToOutputDirectory="PreserveNewest" />
