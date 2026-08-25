@@ -505,3 +505,143 @@ public class SameOrganisationWideningTests
         report.Unauthorized.ShouldBe(1);
     }
 }
+
+public class HarvestDeterminismTests
+{
+    private static KeyValuePair<string, GeofeedAuthorization> Feed(string url, params string[] allowed)
+    {
+        var authorization = new GeofeedAuthorization();
+        foreach (var prefix in allowed)
+        {
+            authorization.Allow(AtlasEntry.FromPrefix(prefix)!.Value);
+        }
+
+        return new KeyValuePair<string, GeofeedAuthorization>(url, authorization.Compact());
+    }
+
+    [Fact]
+    public async Task Two_harvests_of_the_same_feeds_agree_line_for_line()
+    {
+        // The output is fed back into a build, so a harvest that reorders itself
+        // between runs makes every downstream dataset differ for no reason. It
+        // used to: ties on the range start were broken by whichever parallel
+        // fetch finished first.
+        var bodies = new Dictionary<string, string?>
+        {
+            // Same start, different lengths and places: exactly the tie that used to wobble.
+            ["https://a.test/g.csv"] = "45.10.0.0/23,PT,PT-11,Lisboa,\n45.10.0.0/24,PT,PT-13,Porto,\n",
+            ["https://b.test/g.csv"] = "45.20.0.0/24,ES,ES-MD,Madrid,\n",
+            ["https://c.test/g.csv"] = "45.30.0.0/24,FR,FR-IDF,Paris,\n",
+        };
+
+        var feeds = new[]
+        {
+            Feed("https://a.test/g.csv", "45.10.0.0/16"),
+            Feed("https://b.test/g.csv", "45.20.0.0/16"),
+            Feed("https://c.test/g.csv", "45.30.0.0/16"),
+        };
+
+        var runs = new List<string>();
+        for (var run = 0; run < 6; run++)
+        {
+            var delay = run;
+            var (accepted, _) = await GeofeedsCommand.HarvestAsync(
+                feeds,
+                async (url, token) =>
+                {
+                    // Vary which feed lands first, the way a real network does.
+                    await Task.Delay(Math.Abs(url.GetHashCode(StringComparison.Ordinal) + delay) % 7, token);
+                    return bodies[url];
+                },
+                concurrency: 4,
+                CancellationToken.None);
+
+            runs.Add(string.Join('\n', accepted.Select(e => $"{e.ToCidr()},{e.CountryCode},{e.Region},{e.City}")));
+        }
+
+        runs.Distinct().Count().ShouldBe(1);
+    }
+}
+
+public class HarvestSpoolTests
+{
+    private static KeyValuePair<string, GeofeedAuthorization> Feed(string url, string allowed)
+    {
+        var authorization = new GeofeedAuthorization();
+        authorization.Allow(AtlasEntry.FromPrefix(allowed)!.Value);
+        return new KeyValuePair<string, GeofeedAuthorization>(url, authorization.Compact());
+    }
+
+    [Fact]
+    public async Task A_finished_feed_is_on_disk_before_the_harvest_ends()
+    {
+        // The whole point: a harvest killed at minute twenty-nine of thirty must
+        // not lose the twenty-nine.
+        var output = Path.Combine(Path.GetTempPath(), $"spool-{Guid.NewGuid():N}.csv");
+        try
+        {
+            await using (var spool = new HarvestSpool(output))
+            {
+                await GeofeedsCommand.HarvestAsync(
+                    [Feed("https://a.test/g.csv", "45.10.0.0/16")],
+                    (_, _) => Task.FromResult<string?>("45.10.0.0/24,PT,PT-11,Lisboa,\n"),
+                    concurrency: 1,
+                    TestContext.Current.CancellationToken,
+                    spool);
+
+                File.Exists(spool.Path).ShouldBeTrue("the spool should exist while the harvest is still running");
+            }
+
+            var (done, entries) = HarvestSpool.Recover(output);
+
+            done.ShouldContain("https://a.test/g.csv");
+            entries.Count.ShouldBe(1);
+            entries[0].City.ShouldBe("Lisboa");
+        }
+        finally
+        {
+            File.Delete(output);
+            File.Delete(output + ".partial");
+        }
+    }
+
+    [Fact]
+    public async Task A_feed_cut_off_before_its_marker_is_not_trusted()
+    {
+        // A kill mid-feed leaves rows with no marker. Reading them as finished
+        // would resume from a half-written feed and silently lose the rest.
+        var output = Path.Combine(Path.GetTempPath(), $"spool-{Guid.NewGuid():N}.csv");
+        try
+        {
+            await using (var spool = new HarvestSpool(output))
+            {
+                await spool.CompleteAsync("https://done.test/g.csv",
+                    [AtlasEntry.FromPrefix("45.10.0.0/24", "PT", city: "Lisboa")!.Value],
+                    TestContext.Current.CancellationToken);
+            }
+
+            await File.AppendAllTextAsync(output + ".partial",
+                "https://cut.test/g.csv\t45.20.0.0/24\tES\t\tMadrid\n", TestContext.Current.CancellationToken);
+
+            var (done, entries) = HarvestSpool.Recover(output);
+
+            done.ShouldBe(["https://done.test/g.csv"]);
+            entries.Count.ShouldBe(1);
+            entries.ShouldNotContain(e => e.City == "Madrid");
+        }
+        finally
+        {
+            File.Delete(output + ".partial");
+        }
+    }
+
+    [Fact]
+    public void Recovering_when_there_is_no_spool_is_not_an_error()
+    {
+        var (done, entries) = HarvestSpool.Recover(
+            Path.Combine(Path.GetTempPath(), $"absent-{Guid.NewGuid():N}.csv"));
+
+        done.ShouldBeEmpty();
+        entries.ShouldBeEmpty();
+    }
+}

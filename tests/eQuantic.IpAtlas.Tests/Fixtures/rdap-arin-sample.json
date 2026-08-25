@@ -1,0 +1,26 @@
+{
+  "handle": "NET-38-0-0-0-1",
+  "startAddress": "38.0.0.0",
+  "endAddress": "38.255.255.255",
+  "ipVersion": "v4",
+  "name": "COGENT-A",
+  "cidr0_cidrs": [
+    {
+      "v4prefix": "38.0.0.0",
+      "length": 8
+    }
+  ],
+  "entities": [
+    {
+      "handle": "COGC",
+      "remarks": [
+        {
+          "title": "Registration Comments",
+          "description": [
+            "Geofeed https://geofeed.cogentco.com/geofeed.csv"
+          ]
+        }
+      ]
+    }
+  ]
+}

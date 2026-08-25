@@ -47,16 +47,19 @@ public static class GeofeedsCommand
         ArgumentNullException.ThrowIfNull(error);
 
         var dumps = args.ExistingFiles("whois");
+        var references = args.ExistingFiles("references");
         var outPath = args.One("out", required: true);
         var concurrency = Number(args, "concurrency", 16, 1, 64);
         var timeout = Number(args, "timeout", 15, 1, 120);
         var limit = Number(args, "limit", int.MaxValue, 1, int.MaxValue);
         var attempts = Number(args, "attempts", 3, 1, 10);
         var sameOrganisation = args.Has("same-org");
+        var perHost = Number(args, "per-host", 2, 1, 16);
+        var cache = args.One("cache");
 
-        if (dumps.Count == 0)
+        if (dumps.Count == 0 && references.Count == 0)
         {
-            args.Fail("--whois needs at least one registry database dump");
+            args.Fail("give at least one of --whois (a registry database dump) or --references (an eqatlas rdap file)");
         }
 
         if (args.Errors.Count > 0)
@@ -70,7 +73,7 @@ public static class GeofeedsCommand
         }
 
         var index = new Dictionary<string, GeofeedAuthorization>(StringComparer.Ordinal);
-        var references = 0;
+        var referencesTotal = 0;
         foreach (var dump in dumps)
         {
             var found = 0;
@@ -86,19 +89,43 @@ public static class GeofeedsCommand
                 found++;
             }
 
-            references += found;
+            referencesTotal += found;
             output.WriteLine($"  {Path.GetFileName(dump),-32} {found,8:N0} geofeed references");
+        }
+
+        foreach (var file in references)
+        {
+            var found = 0;
+            foreach (var reference in ReadReferences(file))
+            {
+                if (reference.Url.Length == 0)
+                {
+                    continue; // an audit row: this delegation carried no geofeed
+                }
+
+                if (!index.TryGetValue(reference.Url, out var authorization))
+                {
+                    index[reference.Url] = authorization = new GeofeedAuthorization();
+                }
+
+                authorization.Allow(reference.Range);
+                authorization.AllowOrganisation(reference.Organisation);
+                found++;
+            }
+
+            referencesTotal += found;
+            output.WriteLine($"  {Path.GetFileName(file),-32} {found,8:N0} geofeed references");
         }
 
         if (index.Count == 0)
         {
-            error.WriteLine("eqatlas: no geofeed references in those dumps");
+            error.WriteLine("eqatlas: no geofeed references in those sources");
             return 1;
         }
 
         if (sameOrganisation)
         {
-            WidenToOrganisations(index, dumps, output);
+            WidenToOrganisations(index, dumps, references, output);
         }
 
         foreach (var authorization in index.Values)
@@ -119,18 +146,36 @@ public static class GeofeedsCommand
         output.WriteLine();
         output.WriteLine($"  {planned:N0} distinct feeds to fetch, {concurrency} at a time");
 
-        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(timeout) };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("eQuantic.IpAtlas.Compiler");
-        client.MaxResponseContentBufferSize = 8 * 1024 * 1024;
+        using var fetcher = new PoliteFetcher(TimeSpan.FromSeconds(timeout), attempts, perHost, cache);
 
-        var (accepted, report) = await HarvestAsync(
-            feeds,
-            (url, token) => ReadAsync(client, url, attempts, token),
+        var (recoveredUrls, recovered) = HarvestSpool.Recover(outPath!);
+        if (recoveredUrls.Count > 0)
+        {
+            output.WriteLine(
+                $"  resuming: {recoveredUrls.Count:N0} feeds already read, {recovered.Count:N0} prefixes recovered");
+        }
+
+        await using var spool = new HarvestSpool(outPath!);
+        var (harvested, report) = await HarvestAsync(
+            feeds.Where(feed => !recoveredUrls.Contains(feed.Key)),
+            fetcher.GetAsync,
             concurrency,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken,
+            spool).ConfigureAwait(false);
 
-        report = report with { References = references, Feeds = planned };
+        var accepted = harvested;
+        accepted.AddRange(recovered);
+        accepted.Sort(CompareForOutput);
+
+        report = report with { References = referencesTotal, Feeds = planned, Accepted = accepted.Count };
+        if (fetcher.NotModified > 0)
+        {
+            output.WriteLine();
+            output.WriteLine($"  {fetcher.NotModified:N0} feeds answered \"unchanged\" and were served from cache");
+        }
+
         await WriteFeedAsync(outPath!, accepted, cancellationToken).ConfigureAwait(false);
+        spool.Discard();
         Report(output, report, outPath!);
         return accepted.Count > 0 ? 0 : 1;
     }
@@ -146,7 +191,8 @@ public static class GeofeedsCommand
     /// </para>
     /// </summary>
     private static void WidenToOrganisations(
-        Dictionary<string, GeofeedAuthorization> index, IReadOnlyList<string> dumps, TextWriter output)
+        Dictionary<string, GeofeedAuthorization> index, IReadOnlyList<string> dumps,
+        IReadOnlyList<string> references, TextWriter output)
     {
         var byOrganisation = new Dictionary<string, List<GeofeedAuthorization>>(StringComparer.OrdinalIgnoreCase);
         foreach (var authorization in index.Values)
@@ -183,9 +229,86 @@ public static class GeofeedsCommand
             }
         }
 
+        // An RDAP run records the organisation for every delegation it asked
+        // about, geofeed or not, so the same widening works there without a
+        // second pass over anything.
+        foreach (var file in references)
+        {
+            foreach (var reference in ReadReferences(file))
+            {
+                if (reference.Organisation is { Length: > 0 } handle
+                    && byOrganisation.TryGetValue(handle, out var feeds))
+                {
+                    foreach (var authorization in feeds)
+                    {
+                        authorization.AllowSameOrganisation(reference.Range);
+                        added++;
+                    }
+                }
+            }
+        }
+
         output.WriteLine();
         output.WriteLine(
             $"  --same-org: {byOrganisation.Count:N0} publishing organisations, {added:N0} further registry objects");
+    }
+
+    /// <summary>Orders the harvest deterministically, whatever order it arrived in.</summary>
+    private static int CompareForOutput(AtlasEntry left, AtlasEntry right)
+    {
+        var result = left.IsV6.CompareTo(right.IsV6);
+        if (result != 0)
+        {
+            return result;
+        }
+
+        result = left.Start.CompareTo(right.Start);
+        if (result != 0)
+        {
+            return result;
+        }
+
+        result = left.End.CompareTo(right.End);
+        if (result != 0)
+        {
+            return result;
+        }
+
+        result = string.CompareOrdinal(left.CountryCode, right.CountryCode);
+        if (result != 0)
+        {
+            return result;
+        }
+
+        result = string.CompareOrdinal(left.Region, right.Region);
+        return result != 0 ? result : string.CompareOrdinal(left.City, right.City);
+    }
+
+    /// <summary>
+    /// Reads what an <c>eqatlas rdap</c> run recorded. Rows with no URL are the
+    /// delegations that carried no geofeed; they are kept in the file as an
+    /// audit of what was checked, and they still carry an organisation, which
+    /// is what <c>--same-org</c> widens from.
+    /// </summary>
+    private static IEnumerable<GeofeedReference> ReadReferences(string path)
+    {
+        foreach (var line in File.ReadLines(path))
+        {
+            if (line.Length == 0 || line[0] == '#')
+            {
+                continue;
+            }
+
+            var fields = line.Split(',');
+            if (fields.Length < 3 || WhoisGeofeedIndex.ParseRange(fields[1]) is not { } range)
+            {
+                continue;
+            }
+
+            var organisation = fields.Length > 3 && fields[3].Length > 0 ? fields[3] : null;
+            yield return new GeofeedReference(range, fields[2], organisation);
+
+        }
     }
 
     /// <summary>
@@ -201,11 +324,13 @@ public static class GeofeedsCommand
     /// <param name="fetch">How to read one feed, answering null when it cannot be read.</param>
     /// <param name="concurrency">How many feeds to read at once.</param>
     /// <param name="cancellationToken">Cancels the harvest.</param>
+    /// <param name="spool">Where to record each feed as it finishes, so a killed run can resume.</param>
     public static async Task<(List<AtlasEntry> Accepted, HarvestReport Report)> HarvestAsync(
         IEnumerable<KeyValuePair<string, GeofeedAuthorization>> feeds,
         Func<string, CancellationToken, Task<string?>> fetch,
         int concurrency,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        HarvestSpool? spool = null)
     {
         ArgumentNullException.ThrowIfNull(feeds);
         ArgumentNullException.ThrowIfNull(fetch);
@@ -266,6 +391,11 @@ public static class GeofeedsCommand
                     offenders.Add((feed.Key, rejected, kept.Count));
                 }
 
+                if (spool is not null)
+                {
+                    await spool.CompleteAsync(feed.Key, kept, token).ConfigureAwait(false);
+                }
+
                 if (kept.Count > 0)
                 {
                     results.Add(kept);
@@ -278,11 +408,12 @@ public static class GeofeedsCommand
             accepted.AddRange(batch);
         }
 
-        accepted.Sort((left, right) =>
-        {
-            var family = left.IsV6.CompareTo(right.IsV6);
-            return family != 0 ? family : left.Start.CompareTo(right.Start);
-        });
+        // A total order, not just family and start. List.Sort is unstable, so
+        // ties were being broken by whichever parallel fetch happened to finish
+        // first — which made two harvests of the same feeds differ by a few
+        // swapped lines. Reproducibility that only holds when the network
+        // cooperates is not reproducibility.
+        accepted.Sort(CompareForOutput);
 
         return (accepted, new HarvestReport(
             0, feedCount, fetched, unreadable, failed, accepted.Count, widenedTotal, unauthorized,
@@ -314,62 +445,6 @@ public static class GeofeedsCommand
 
         output.WriteLine();
         output.WriteLine($"wrote {outPath}");
-    }
-
-    /// <summary>
-    /// Fetches one feed, retrying with a widening delay. A crawl of thousands of
-    /// small servers has a long tail of transient failures, and treating the
-    /// first timeout as a verdict throws away real data.
-    /// </summary>
-    private static async Task<string?> ReadAsync(
-        HttpClient client, string url, int attempts, CancellationToken cancellationToken)
-    {
-        for (var attempt = 1; attempt <= attempts; attempt++)
-        {
-            try
-            {
-                return await client.GetStringAsync(url, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException
-                or InvalidOperationException or UriFormatException)
-            {
-                if (attempt == attempts || IsFinal(ex))
-                {
-                    return null;
-                }
-
-                await Task.Delay(TimeSpan.FromSeconds(attempt), cancellationToken).ConfigureAwait(false);
-            }
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// Whether a failure is worth asking about again. A refusal is an answer, and
-    /// a hostname that does not resolve will not resolve on the third try either.
-    /// Across five thousand feeds the dead ones are a large minority, and
-    /// retrying them is most of the wall clock for none of the data.
-    /// </summary>
-    private static bool IsFinal(Exception ex)
-    {
-        if (ex is HttpRequestException { StatusCode: { } status } && (int)status is >= 400 and < 500)
-        {
-            return true;
-        }
-
-        for (var inner = ex; inner is not null; inner = inner.InnerException)
-        {
-            if (inner is System.Net.Sockets.SocketException socket)
-            {
-                return socket.SocketErrorCode is System.Net.Sockets.SocketError.HostNotFound
-                    or System.Net.Sockets.SocketError.NoData
-                    or System.Net.Sockets.SocketError.ConnectionRefused
-                    or System.Net.Sockets.SocketError.NetworkUnreachable;
-            }
-        }
-
-        return false;
     }
 
     private static string Shorten(string url) => url.Length <= 72 ? url : url[..69] + "...";

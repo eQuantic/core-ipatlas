@@ -73,9 +73,17 @@ eqatlas fetch --into sources --with-whois
 eqatlas geofeeds --whois sources/*.db*.gz --out geofeeds.csv --same-org
 ```
 
-That one is a real crawl of several thousand hosts. If you would rather not do
-it, a dataset built the same way is published monthly with a checksum and a
-manifest of the run that produced it:
+ARIN and LACNIC publish no bulk database, so their operators' geofeeds are
+found a block at a time over RDAP instead:
+
+```bash
+eqatlas rdap --delegated sources/delegated-arin sources/delegated-lacnic --out refs.csv
+eqatlas geofeeds --references refs.csv --out geofeeds.csv --same-org
+```
+
+Both are real crawls of several thousand hosts, and both resume if interrupted.
+If you would rather not do them, a dataset built the same way is published
+monthly with a checksum and a manifest of the run that produced it:
 
 ```bash
 curl -fsSLO https://github.com/eQuantic/core-ipatlas/releases/download/dataset/world.eqatlas
@@ -163,10 +171,12 @@ on a small build agent.
 - **Coordinates are metropolitan.** Providers name the metro their region runs
   in, not the building, and geofeeds name a city. Precision beyond that is not
   in any free source and is not invented here.
-- **City coverage is where operators bothered.** A full harvest answers about
-  six percent of random routable addresses with a city. That will rise as
-  operators annotate their registry objects, and you can raise it yourself with
-  `--override`.
+- **City coverage is where operators bothered, and they are not spread evenly.**
+  93.6 % of hosting and datacenter space carries a city; 2.8 % of everything
+  else does. The average of the two is not a useful number. Operators who run
+  infrastructure publish geofeeds and residential ISPs mostly do not, so
+  deciding *which datacenter* is close to solved and placing a residential
+  subscriber in a city is not something any free first-party source can do.
 - **Anonymizer coverage is Tor and whatever you supply.** Commercial VPN and
   proxy space is not covered by any free source at scale, so `IsAnonymizer`
   being false means "not on a list we have", not "not a VPN".
