@@ -78,7 +78,7 @@ Output reports where every country came from, and what it had to reject:
 ## `geofeeds` — harvest operator geofeeds
 
 ```bash
-eqatlas geofeeds --whois <dump.gz>... --out <geofeeds.csv>
+eqatlas geofeeds [--whois <dump.gz>...] [--references <refs.csv>...] --out <geofeeds.csv>
 ```
 
 | flag | |
@@ -89,10 +89,52 @@ eqatlas geofeeds --whois <dump.gz>... --out <geofeeds.csv>
 | `--timeout <seconds>` | per request (default 15) |
 | `--attempts <n>` | retries, skipping what cannot succeed (default 3) |
 | `--limit <n>` | bound the crawl, deterministically |
+| `--per-host <n>` | requests in flight at any one host (default 2) |
+| `--cache <dir>` | remember bodies and validators, and ask conditionally |
+| `--references <file>...` | geofeed pointers from `eqatlas rdap` |
 | `--same-org` | also accept prefixes the registry records against a publishing organisation |
 
-A real crawl of thousands of hosts. Every prefix is checked against the
-registry objects that pointed at its feed. See [Geofeeds](geofeeds.md).
+A real crawl of thousands of hosts. Requests are limited per host as well as
+overall, because the URLs are not spread evenly — one operator publishes 460
+feeds on a single server. A killed run resumes from a spool beside the output.
+Every prefix is checked against the registry objects that pointed at its feed.
+See [Geofeeds](geofeeds.md).
+
+---
+
+## `rdap` — find geofeeds a registry will not hand over in bulk
+
+```bash
+eqatlas rdap --delegated <delegated-extended>... --out <references.csv>
+```
+
+| flag | |
+|---|---|
+| `--delegated <file>...` | registry delegation files; the registry field routes each query |
+| `--out <path>` | references, ready for `geofeeds --references` |
+| `--concurrency <n>` | queries in flight overall (default 8) |
+| `--per-host <n>` | queries in flight at any one registry (default 4) |
+| `--timeout <seconds>` | per request (default 20) |
+| `--attempts <n>` | retries, honouring `Retry-After` (default 3) |
+| `--cache <dir>` | remember responses and ask conditionally |
+| `--limit <n>` | bound the run |
+
+ARIN and LACNIC publish no bulk database, so their operators' geofeeds cannot
+be found the way the others are. They do run RDAP, and the delegated files
+already say which blocks exist — so the crawl asks about each one. It is slow
+by comparison, on the order of an hour for 122,091 queries, and **resumable**:
+every block asked about is recorded, including those with no geofeed, so a
+killed run picks up where it stopped rather than starting over.
+
+Queries route to the registry that answers. Asked about a Brazilian block,
+LACNIC returns a rate-limit page and Registro.br returns the operator's
+geofeed, so `lacnic|BR` delegations go to Registro.br — which also takes two
+thirds of the load off a registry that cannot carry it.
+
+```bash
+eqatlas rdap --delegated sources/delegated-arin sources/delegated-lacnic --out refs.csv
+eqatlas geofeeds --references refs.csv --out geofeeds.csv --same-org
+```
 
 ---
 

@@ -73,8 +73,10 @@ as accurate as the sources you give it, and the sources that matter are free.
   a small ISP's addresses really are used in the country it registered them in.
   The measurement above is deliberately taken where registry data is weakest.
 - **City accuracy.** The table is country accuracy. City data comes from cloud
-  regions and operator geofeeds, and the coverage figure — about 6 % of random
-  routable addresses — is in [Geofeeds](geofeeds.md).
+  regions and operator geofeeds, and it is not spread evenly: **93.6 % of
+  hosting and datacenter space carries a city, against 2.8 % of everything
+  else.** Quoting the 7 % average of the two is misleading in both directions.
+  See [Geofeeds](geofeeds.md).
 - **Anycast.** An address announced from thirty cities has no correct country.
   Those ranges carry a flag instead of a claim; see [the API guide](api.md).
 
