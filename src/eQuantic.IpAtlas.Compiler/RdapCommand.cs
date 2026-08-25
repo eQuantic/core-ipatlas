@@ -303,7 +303,7 @@ public static class RdapCommand
             {
                 if (_writer is null)
                 {
-                    _writer = new StreamWriter(path, append: true);
+                    _writer = AppendSafely.Open(path);
                     if (fresh)
                     {
                         await _writer.WriteLineAsync("# delegation,range,geofeed url,organisation").ConfigureAwait(false);

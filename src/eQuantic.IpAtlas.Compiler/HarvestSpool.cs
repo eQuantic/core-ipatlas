@@ -51,6 +51,8 @@ public sealed class HarvestSpool : IAsyncDisposable
             return (done, []);
         }
 
+        AppendSafely.TrimPartialLine(path);
+
         foreach (var line in File.ReadLines(path))
         {
             if (line.StartsWith(DoneMarker, StringComparison.Ordinal))
@@ -99,7 +101,7 @@ public sealed class HarvestSpool : IAsyncDisposable
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            _writer ??= new StreamWriter(_path, append: true);
+            _writer ??= AppendSafely.Open(_path);
 
             var text = new StringBuilder();
             foreach (var entry in entries)

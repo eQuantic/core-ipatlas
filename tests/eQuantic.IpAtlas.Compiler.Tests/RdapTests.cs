@@ -152,3 +152,108 @@ public class RdapRobustnessTests
         answer.Range!.Value.ToCidr().ShouldBe("45.10.0.0/24");
     }
 }
+
+/// <summary>
+/// Resuming means appending to a file a killed process wrote. It does not stop
+/// between lines.
+/// </summary>
+public class AppendSafelyTests
+{
+    private static string Temp() => Path.Combine(Path.GetTempPath(), $"append-{Guid.NewGuid():N}.csv");
+
+    [Fact]
+    public void A_fragment_left_by_a_kill_does_not_join_the_next_record()
+    {
+        // This is the row a real crawl produced: "lac" was on disk with no
+        // newline, the resume appended "registro.br/..." and the file recorded
+        // "lacregistro.br/24.152.12.0" — a block belonging to neither registry.
+        var path = Temp();
+        try
+        {
+            File.WriteAllText(path, "arin/1.0.0.0,1.0.0.0/24,,arin:AAA\nlac");
+
+            using (var writer = AppendSafely.Open(path))
+            {
+                writer.WriteLine("registro.br/24.152.12.0,24.152.12.0/22,,registro.br:123");
+            }
+
+            var lines = File.ReadAllLines(path);
+
+            lines.Length.ShouldBe(2);
+            lines[1].ShouldStartWith("registro.br/");
+            lines.ShouldNotContain(line => line.StartsWith("lacregistro", StringComparison.Ordinal));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void A_file_that_ends_cleanly_is_left_alone()
+    {
+        var path = Temp();
+        try
+        {
+            File.WriteAllText(path, "arin/1.0.0.0,1.0.0.0/24,,arin:AAA\n");
+            AppendSafely.TrimPartialLine(path);
+
+            File.ReadAllText(path).ShouldBe("arin/1.0.0.0,1.0.0.0/24,,arin:AAA\n");
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void A_file_that_is_nothing_but_a_fragment_is_emptied()
+    {
+        var path = Temp();
+        try
+        {
+            File.WriteAllText(path, "arin/1.0.0.0,1.0");
+            AppendSafely.TrimPartialLine(path);
+
+            new FileInfo(path).Length.ShouldBe(0);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void A_fragment_longer_than_the_scan_buffer_is_still_found()
+    {
+        var path = Temp();
+        try
+        {
+            File.WriteAllText(path, "good,line\n" + new string('x', 9000));
+            AppendSafely.TrimPartialLine(path);
+
+            File.ReadAllText(path).ShouldBe("good,line\n");
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void An_absent_or_empty_file_is_not_an_error()
+    {
+        var path = Temp();
+        AppendSafely.TrimPartialLine(path);
+        File.WriteAllText(path, string.Empty);
+        try
+        {
+            AppendSafely.TrimPartialLine(path);
+            new FileInfo(path).Length.ShouldBe(0);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+}
