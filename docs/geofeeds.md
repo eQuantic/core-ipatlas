@@ -136,11 +136,75 @@ acceptances are counted by grounds and reported separately rather than merged:
 
 Objects with no `org:` attribute contribute nothing to widen from.
 
-## What is out of reach
+## Registries with no bulk database
 
-**ARIN and LACNIC** do not publish bulk whois under terms this can use, so
-their operators' geofeeds cannot be discovered this way. That is a real gap in
-coverage of North and South American address space, not an oversight.
+ARIN and LACNIC publish no bulk whois this can read, and that was written up
+here as a permanent gap. It was wrong — out of reach *that way*, not out of
+reach. Both run RDAP, and the delegated files already list every block, so
+`eqatlas rdap` asks about each one:
+
+```bash
+eqatlas fetch --into sources
+eqatlas rdap --delegated sources/delegated-arin sources/delegated-lacnic --out refs.csv
+eqatlas geofeeds --references refs.csv --out geofeeds.csv --same-org
+```
+
+The reference is not where RFC 9092 puts it. The RFC describes a `geofeed`
+attribute on the network object; ARIN carries it as free text in the remarks of
+the *organisation entity* the network belongs to. The reader walks the whole
+document rather than reading a field.
+
+Queries route to the registry that answers. Asked about a Brazilian block:
+
+| | response |
+|---|---|
+| LACNIC | `429 Too Many Requests`, 116 bytes |
+| Registro.br | 12.6 kB, including the operator's geofeed |
+
+Brazil is 64.8% of LACNIC's delegations, so routing them by the country code in
+the delegated file both reaches data the regional registry will not give and
+takes most of the load off one that plainly cannot carry it. Other national
+registries advertise RDAP endpoints; of eight tested, five did not resolve and
+two answered empty, so only the one that answers is used. An endpoint is not a
+source until it answers.
+
+## What this actually bought
+
+Measured over a full ARIN crawl and a partial LACNIC one:
+
+| | |
+|---|---:|
+| delegations asked about | 94,759 |
+| geofeed references found | 4,690 |
+| distinct feeds behind them | 889 |
+| **feeds the bulk-whois harvest had not found** | **806** |
+| prefixes those feeds contributed | 322,788 |
+| city coverage, before | 6.28 % |
+| city coverage, after | 7.03 % |
+
+Worth being precise about the middle row, because it is easy to overstate. Four
+thousand references are not four thousand feeds: one operator's file is pointed
+at from hundreds of blocks. The gain is 806 feeds on 5,314 — about 15% more
+sources, and three quarters of a percentage point of coverage.
+
+The crawl stops short of complete. Registro.br began answering `403` after some
+three thousand queries, so 21,939 Brazilian delegations remain. They are
+reachable at a slower rate, and would not change the shape of the result.
+
+## Where the coverage actually is
+
+The 7% is an average of two populations that have nothing to do with each other:
+
+| | city coverage |
+|---|---:|
+| hosting and datacenter space | **93.6 %** |
+| everything else | 2.8 % |
+
+That is the honest shape of what geofeeds provide. Operators who run
+infrastructure publish; residential ISPs mostly do not. For deciding whether an
+address is a datacenter and which one, this is close to solved. For placing a
+residential subscriber in a city, no free first-party source exists and no
+amount of further discovery will create one.
 
 **Coordinates.** RFC 8805 carries country, region, city and postal code, and no
 latitude or longitude. Geofeed-located ranges therefore answer with place names
